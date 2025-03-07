@@ -1,8 +1,9 @@
 import mne
 import pyxdf  # Import pyxdf directly
+from mne.export import export_raw  # Import export_raw for saving .set files
 
 # Load the XDF file
-xdf_file = "sub-P009_ses-S004_task-Default_run-001_eeg.xdf"  # Replace with your actual file
+xdf_file = "your_recording.xdf"  # Replace with your actual file
 streams, header = pyxdf.load_xdf(xdf_file)
 
 # Identify EEG and Marker streams
@@ -11,7 +12,7 @@ marker_stream = None
 
 for stream in streams:
     name = stream['info']['name'][0]
-    if 'Muse' in name:
+    if 'EEG' in name:
         eeg_stream = stream
     elif 'Marker' in name or 'Markers' in name:
         marker_stream = stream
@@ -28,24 +29,38 @@ if eeg_stream:
         info=mne.create_info(ch_names, sfreq, ch_types)
     )
 
-    # Save EEG data as .set file for EEGLAB
-    raw.export("sub-P009_ses-S004_task-Default_run-001_eeg.set", fmt="eeglab", overwrite=True)
-    print("Saved EEG data as .set file!")
+    # Check if there is a marker stream
+    if marker_stream:
+        # Extract event markers and timestamps
+        event_times = marker_stream['time_stamps']
+        event_values = [int(m[0]) for m in marker_stream['time_series']]  # Convert markers to integers
 
-if marker_stream:
-    # Extract event markers and timestamps
-    event_times = marker_stream['time_stamps']
-    event_values = [int(m[0]) for m in marker_stream['time_series']]  # Convert to integers
+        # Convert event times to sample indices
+        event_samples = [int(t * sfreq) for t in event_times]  # Convert time (s) to sample index
 
-    # Convert events to MNE format
-    events = [[int(t * sfreq), 0, v] for t, v in zip(event_times, event_values)]
-    events = mne.events_from_annotations(raw)  # Create MNE event structure
+        # Create MNE event array (n_events x 3 format: [sample, 0, event_id])
+        events = [[sample, 0, value] for sample, value in zip(event_samples, event_values)]
+        events = mne.EventsArray(events, raw.info["sfreq"])
 
-    # Save events separately
+        # Add events to raw object
+        annotations = mne.Annotations(onset=event_times, duration=[0] * len(event_times), description=[str(v) for v in event_values])
+        raw.set_annotations(annotations)
+
+        print("Added event markers to EEG data!")
+
+    # Save EEG data with events as .set file for EEGLAB
+    export_raw("your_recording.set", raw, fmt="eeglab", overwrite=True)  # ✅ Correct way
+    print("Saved EEG data with events as .set file!")
+
+    # Save events separately (optional)
     with open("events.txt", "w") as f:
         for t, v in zip(event_times, event_values):
             f.write(f"{t},{v}\n")
 
     print("Saved events separately as events.txt!")
+
+#    OLD CODE TO SAVE: # Save EEG data as .set file for EEGLAB
+#    raw.export("sub-P009_ses-S004_task-Default_run-001_eeg.set", fmt="eeglab", overwrite=True)
+
 
 
