@@ -1,37 +1,19 @@
 import time
-import pandas as pd
-from pylsl import StreamInfo, StreamOutlet, resolve_stream, StreamInlet
+from pylsl import StreamInfo, StreamOutlet
 
-# Create an LSL stream for event markers
-info = StreamInfo('Markers', 'Markers', 1, 0, 'int32', 'marker_stream')
-marker_outlet = StreamOutlet(info)
+# Create a marker stream for event triggers
+info = StreamInfo(name='Markers', type='Markers', channel_count=1, nominal_srate=0, 
+                  channel_format='int32', source_id='marker_stream')
+outlet = StreamOutlet(info)
 
-# Resolve EEG stream
-print("Looking for an EEG stream...")
-streams = resolve_stream('type', 'EEG')
-eeg_inlet = StreamInlet(streams[0])
-
-data_list = []
+# Send triggers at specific intervals
+print("Sending triggers... Press Ctrl+C to stop.")
 
 try:
     while True:
-        # Get EEG data sample
-        eeg_sample, timestamp = eeg_inlet.pull_sample()
-
-        # Send trigger randomly (Example: Every 5 seconds)
-        if int(time.time()) % 5 == 0:
-            marker_outlet.push_sample([1])  # Send event marker "1"
-            event_marker = 1
-        else:
-            event_marker = 0
-
-        # Store data in a list
-        data_list.append([timestamp] + eeg_sample + [event_marker])
-
+        trigger_value = 1  # Change this based on your experiment
+        outlet.push_sample([trigger_value])
+        print(f"Trigger Sent: {trigger_value}")
+        time.sleep(5)  # Adjust time interval as needed
 except KeyboardInterrupt:
-    print("Stopping recording...")
-
-# Save data to CSV
-df = pd.DataFrame(data_list, columns=['Timestamp', 'EEG1', 'EEG2', 'EEG3', 'EEG4', 'Marker'])
-df.to_csv('muse_eeg_with_markers.csv', index=False)
-print("Data saved as 'muse_eeg_with_markers.csv'")
+    print("Stopped sending triggers.")
