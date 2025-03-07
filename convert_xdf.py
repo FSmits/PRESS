@@ -49,7 +49,7 @@ if eeg_stream:
         print("Added event markers to EEG data!")
 
     # Save EEG data with events as .set file for EEGLAB
-    export_raw("sub-P009_ses-S004_task-Default_run-001_eeg.set", raw, fmt="eeglab", overwrite=True)  # ✅ Correct way
+    raw.export("sub-P009_ses-S004_task-Default_run-001_eeg.set", fmt="eeglab", overwrite=True)
     print("Saved EEG data with events as .set file!")
 
     # Save events separately (optional)
@@ -58,9 +58,4 @@ if eeg_stream:
             f.write(f"{t},{v}\n")
 
     print("Saved events separately as events.txt!")
-
-#    OLD CODE TO SAVE: # Save EEG data as .set file for EEGLAB
-#    raw.export("sub-P009_ses-S004_task-Default_run-001_eeg.set", fmt="eeglab", overwrite=True)
-
-
 
