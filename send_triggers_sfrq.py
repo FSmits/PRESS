@@ -4,19 +4,21 @@ from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_stream, local_c
 # Define EEG sampling rate (must match Muse's actual rate, usually 256 Hz)
 SFREQ = 256  
 
-# Wait for the Muse EEG stream to appear on LSL
-print("Looking for EEG stream...")
-streams = resolve_stream('type', 'EEG')
-eeg_inlet = StreamInlet(streams[0])  # Connect to the EEG stream
-
-# Get the first EEG sample timestamp as the start time
-eeg_start_time, _ = eeg_inlet.pull_sample()
-print(f"EEG Recording Start Time: {eeg_start_time}")
-
-# Create an LSL marker stream
+# Step 1: Create the marker stream FIRST
 info = StreamInfo(name='Markers', type='Markers', channel_count=1, nominal_srate=0,
                   channel_format='int32', source_id='marker_stream')
 outlet = StreamOutlet(info)
+
+print("Marker stream created. Waiting for EEG stream...")
+
+# Step 2: Wait for EEG stream to appear
+streams = resolve_stream('type', 'EEG')  # Wait for EEG to start
+eeg_inlet = StreamInlet(streams[0])  # Connect to EEG stream
+
+# Step 3: Get the first EEG sample timestamp as the start time
+first_sample, first_timestamp = eeg_inlet.pull_sample()
+eeg_start_time = first_timestamp  # This is the exact start time of EEG recording
+print(f"EEG Recording Started at LSL Time: {eeg_start_time}")
 
 print("Sending triggers... Press Ctrl+C to stop.")
 
@@ -25,7 +27,7 @@ try:
         # Get current LSL time
         current_time = local_clock()
 
-        # Convert to sample index relative to EEG stream
+        # Compute sample index relative to EEG start
         sample_index = int((current_time - eeg_start_time) * SFREQ)
         trigger_value = 1  # Change this based on your experiment
         
