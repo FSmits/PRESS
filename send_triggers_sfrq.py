@@ -37,4 +37,12 @@ try:
             continue
 
         # Define trigger value (change based on experiment)
-   
+        trigger_value = 1
+
+        # Send the trigger event with the calculated sample index
+        outlet.push_sample([trigger_value])
+        print(f"Trigger Sent: {trigger_value} at Sample {sample_index}")
+
+        time.sleep(5)  # Adjust as needed for your experiment's trigger interval
+except KeyboardInterrupt:
+    print("Stopped sending triggers.")
