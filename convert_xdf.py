@@ -29,7 +29,7 @@ if eeg_stream:
     )
 
     # Save EEG data as .set file for EEGLAB
-    raw.save("sub-P009_ses-S004_task-Default_run-001_eeg.set", fmt="eeglab", overwrite=True)
+    raw.export("sub-P009_ses-S004_task-Default_run-001_eeg.set", fmt="eeglab", overwrite=True)
     print("Saved EEG data as .set file!")
 
 if marker_stream:
