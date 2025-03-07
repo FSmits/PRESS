@@ -3,7 +3,7 @@ import pyxdf  # Import pyxdf directly
 from mne.export import export_raw  # Import export_raw for saving .set files
 
 # Load the XDF file
-xdf_file = "your_recording.xdf"  # Replace with your actual file
+xdf_file = "sub-P009_ses-S004_task-Default_run-001_eeg.xdf"  # Replace with your actual file
 streams, header = pyxdf.load_xdf(xdf_file)
 
 # Identify EEG and Marker streams
@@ -49,7 +49,7 @@ if eeg_stream:
         print("Added event markers to EEG data!")
 
     # Save EEG data with events as .set file for EEGLAB
-    export_raw("your_recording.set", raw, fmt="eeglab", overwrite=True)  # ✅ Correct way
+    export_raw("sub-P009_ses-S004_task-Default_run-001_eeg.set", raw, fmt="eeglab", overwrite=True)  # ✅ Correct way
     print("Saved EEG data with events as .set file!")
 
     # Save events separately (optional)
