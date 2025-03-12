@@ -37,7 +37,7 @@ def main():
         print(markername, timestamp, elapsed_time, latency)
       
         # pick a sample to send an wait for a bit
-        outlet.push_sample(markername, timestamp)
+        outlet.push_sample([markername, str(timestamp)])
         time.sleep(3.1)
 
 
