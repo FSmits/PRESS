@@ -33,10 +33,12 @@ def main():
         timestamp = local_clock()
         elapsed_time = local_clock() - start_time
         latency = srate * elapsed_time
-        print(timestamp, elapsed_time, latency)
+        markername = [random.choice(markernames)]
+        print(markername, timestamp, elapsed_time, latency)
       
         # pick a sample to send an wait for a bit
-        outlet.push_sample([random.choice(markernames)], timestamp)
+        outlet.push_sample(markername, timestamp)
+        outlet.push_sample(timestamp)
         time.sleep(3.1)
 
 
