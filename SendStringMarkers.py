@@ -3,7 +3,7 @@
 import random
 import time
 
-from pylsl import StreamInfo, StreamOutlet, resolve_stream
+from pylsl import StreamInfo, StreamOutlet, resolve_stream,local_clock
 
 
 def main():
