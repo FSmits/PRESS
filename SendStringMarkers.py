@@ -35,12 +35,13 @@ def main():
     eeg_inlet = wait_for_eeg_stream()
 
     # Get EEG stream timestamp to synchronize markers
-    _, first_eeg_timestamp = eeg_inlet.pull_sample(timeout=5)
+    _, first_eeg_timestamp = eeg_inlet.pull_sample(timeout=10)
     if first_eeg_timestamp is None:
         print("Error: Could not retrieve EEG timestamp.")
         return
 
-    eeg_start_time, _ = eeg_inlet.pull_sample()
+    # When the first sample is received, LabRecorder has started
+    print(f"LabRecorder started at {timestamp:.6f} seconds")
     
     # Get EEG stream timestamp to synchronize markers (previously by local_clock: start_time = local_clock() )
     start_time = time.time()
@@ -66,8 +67,7 @@ def main():
         latency = srate * elapsed_time
         markername = [random.choice(markernames)]
         current_time = local_clock()
-        # sample_index = (current_time - eeg_start_time) * srate
-        print(eeg_start_time, markername, timestamp, elapsed_time, first_eeg_timestamp, latency)
+        print(markername, timestamp, elapsed_time, first_eeg_timestamp, latency)
       
         # Combine marker name and latency into a single string
         marker_data = f"{markername}:{timestamp:.3f}"
