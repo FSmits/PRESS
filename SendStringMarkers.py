@@ -22,19 +22,10 @@ def main():
 
     print("Marker stream created. Waiting for EEG stream...")
 
-    # Step 2: Wait for EEG stream to appear
-    streams = resolve_stream('type', 'EEG')  # Wait for EEG to start
-    eeg_inlet = StreamInlet(streams[0])  # Connect to EEG stream
-
-    # Step 3: Wait until EEG stream is ready
-    print("Waiting for EEG data to start...")
-    first_sample, first_timestamp = eeg_inlet.pull_sample()
-    start_time = first_timestamp  # Use this as the reference time for EEG
-    print(f"EEG Recording Started at LSL Time: {eeg_start_time}")
-
     print("Sending triggers... Press Ctrl+C to stop.")
 
     markernames = ['Test', 'Blah', 'Marker', 'XXX', 'Testtest', 'Test-1-2-3']
+    start_time = local_clock()
     srate = 256
     while True:
 
@@ -45,7 +36,7 @@ def main():
         print(timestamp, elapsed_time, latency)
       
         # pick a sample to send an wait for a bit
-        outlet.push_sample([random.choice(markernames)], latency)
+        outlet.push_sample([random.choice(markernames)], timestamp)
         time.sleep(3.1)
 
 
