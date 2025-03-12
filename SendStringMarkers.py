@@ -53,12 +53,12 @@ def main():
         timestamp = local_clock()
         elapsed_time = timestamp - start_time
         eeg_time = timestamp - first_eeg_timestamp
-        latency = srate * eeg_time
+        latency = srate * elapsed_time
         markername = [random.choice(markernames)]
         print(markername, timestamp, elapsed_time, eeg_time, latency)
       
         # Combine marker name and latency into a single string
-        marker_data = f"{markername}:{eeg_time:.3f}"
+        marker_data = f"{markername}:{latency:.3f}"
 
         print(f"Sent Marker: {marker_data}, Timestamp: {timestamp}")
 
