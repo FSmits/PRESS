@@ -57,7 +57,8 @@ def main(argv):
             outlet.push_sample(mysample)
         sent_samples += required_samples
         # now send it and wait for a bit before trying again.
-        time.sleep(0.01)
+        time.sleep(3.01)
+        print("send sample")
 
 
 if __name__ == '__main__':
