@@ -41,7 +41,7 @@ def main():
         return
     
     # Get EEG stream timestamp to synchronize markers (previously by local_clock: start_time = local_clock() )
-    start_time = local_clock()
+    start_time = time.time()
     # Calculate the difference (delta) between the sample's timestamp and the current LSL time
     delta = first_eeg_timestamp - start_time
     # Convert the LSL timestamp to the actual time by adjusting with the delta
@@ -58,8 +58,8 @@ def main():
     while True:
 
         # get a new sample (you can also omit the timestamp part if you're not interested in it)
-        # Get EEG stream timestamp to synchronize markers (previously by local_clock: start_time = local_clock() )
-        timestamp = local_clock()
+        # Get EEG stream timestamp to synchronize markers (previously by local_clock: timestamp = local_clock() )
+        timestamp = time.time()
         elapsed_time = timestamp - start_time
         latency = srate * elapsed_time
         markername = [random.choice(markernames)]
