@@ -59,12 +59,12 @@ def main():
         print(markername, timestamp, elapsed_time, first_eeg_timestamp, latency)
       
         # Combine marker name and latency into a single string
-        marker_data = f"{markername}:{timestamp:.3f}"
+        marker_data = f"{markername}:{latency:.3f}"
 
-        print(f"Sent Marker: {marker_data}, Timestamp: {timestamp}")
+        print(f"Sent Marker: {marker_data}, Timestamp: {latency}")
 
         # Send as a single-element list
-        outlet.push_sample([markername],latency)
+        outlet.push_sample([marker_data])
         
         time.sleep(1.7)
 
