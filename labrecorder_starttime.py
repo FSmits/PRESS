@@ -1,4 +1,4 @@
-from pylsl import StreamInfo, StreamOutlet, resolve_stream, local_clock
+from pylsl import StreamInfo, StreamInlet, StreamOutlet, resolve_stream, local_clock
 import time
 
 # Resolve the EEG stream
