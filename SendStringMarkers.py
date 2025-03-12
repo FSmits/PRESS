@@ -69,7 +69,7 @@ def main():
         # Send as a single-element list
         outlet.push_sample([marker_data], timestamp)
         
-        time.sleep(3.1)
+        time.sleep(1.7)
 
 
 if __name__ == '__main__':
