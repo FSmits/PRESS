@@ -34,9 +34,6 @@ def main():
     # Wait for EEG stream before sending triggers
     eeg_inlet = wait_for_eeg_stream()
 
-    # Wait for user to start the experiment
-    input("Press Enter to start sending markers...")
-
     # Get EEG stream timestamp to synchronize markers
     _, first_eeg_timestamp = eeg_inlet.pull_sample(timeout=5)
     if first_eeg_timestamp is None:
@@ -52,6 +49,9 @@ def main():
 
     markernames = ['Test', 'Blah', 'Marker', 'XXX', 'Testtest', 'Test-1-2-3']
     srate = 256
+
+    # Wait for user to start the experiment
+    input("Press Enter to start sending markers...")
 
     print("Sending triggers... Press Ctrl+C to stop.")
    
