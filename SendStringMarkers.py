@@ -41,7 +41,7 @@ def main():
         return
 
     # When the first sample is received, LabRecorder has started
-    print(f"LabRecorder started at {timestamp:.6f} seconds")
+    print(f"LabRecorder started at {first_eeg_timestamp:.6f} seconds")
     
     # Get EEG stream timestamp to synchronize markers (previously by local_clock: start_time = local_clock() )
     start_time = time.time()
