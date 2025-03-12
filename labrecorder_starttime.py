@@ -1,5 +1,9 @@
-from pylsl import StreamInfo, StreamInlet, StreamOutlet, resolve_stream, local_clock
+import random
 import time
+import keyboard
+import datetime
+
+from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_stream,local_clock
 
 # Resolve the EEG stream
 print("Looking for EEG stream...")
