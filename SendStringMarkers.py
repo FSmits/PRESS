@@ -52,7 +52,7 @@ def main():
         # get a new sample (you can also omit the timestamp part if you're not interested in it)
         timestamp = local_clock()
         elapsed_time = timestamp - start_time
-        since_eeg_time = start_time - first_eeg_timestamp
+        since_eeg_time = first_eeg_timestamp - start_time
         latency = srate * (elapsed_time + since_eeg_time)
         markername = [random.choice(markernames)]
         print(markername, timestamp, elapsed_time, since_eeg_time, latency)
