@@ -11,7 +11,7 @@ from pylsl import StreamInfo, StreamOutlet, local_clock
 
 def main(argv):
     srate = 256
-    name = 'Muse'
+    name = 'Muse-markers'
     type = 'EEG'
     n_channels = 4
     help_string = 'SendData.py -s <sampling_rate> -n <stream_name> -t <stream_type>'
