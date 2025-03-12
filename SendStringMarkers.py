@@ -40,16 +40,6 @@ def main():
         print("Error: Could not retrieve EEG timestamp.")
         return
 
-    # When the first sample is received, LabRecorder has started
-    print(f"LabRecorder started at {first_eeg_timestamp:.6f} seconds")
-    
-    # Get EEG stream timestamp to synchronize markers (previously by local_clock: start_time = local_clock() )
-    start_time = time.time()
-    # Calculate the difference (delta) between the sample's timestamp and the current LSL time
-    delta = first_eeg_timestamp - start_time
-    # Convert the LSL timestamp to the actual time by adjusting with the delta
-    real_time = time.time() - delta  # Real-world time in seconds
-
     markernames = ['Test', 'Blah', 'Marker', 'XXX', 'Testtest', 'Test-1-2-3']
     srate = 256
 
@@ -66,7 +56,6 @@ def main():
         elapsed_time = timestamp - first_eeg_timestamp
         latency = srate * elapsed_time
         markername = [random.choice(markernames)]
-        current_time = local_clock()
         print(markername, timestamp, elapsed_time, first_eeg_timestamp, latency)
       
         # Combine marker name and latency into a single string
@@ -75,7 +64,7 @@ def main():
         print(f"Sent Marker: {marker_data}, Timestamp: {timestamp}")
 
         # Send as a single-element list
-        outlet.push_sample([latency])
+        outlet.push_sample([markername],latency)
         
         time.sleep(1.7)
 
