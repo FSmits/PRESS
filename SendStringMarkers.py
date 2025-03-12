@@ -47,15 +47,16 @@ def main():
     markernames = ['Test', 'Blah', 'Marker', 'XXX', 'Testtest', 'Test-1-2-3']
     start_time = local_clock()
     srate = 256
+    since_eeg_time = first_eeg_timestamp - (start_time * srate)
+   
     while True:
 
         # get a new sample (you can also omit the timestamp part if you're not interested in it)
         timestamp = local_clock()
         elapsed_time = timestamp - start_time
-        since_eeg_time = first_eeg_timestamp - start_time
         latency = srate * (elapsed_time + since_eeg_time)
         markername = [random.choice(markernames)]
-        print(markername, timestamp, elapsed_time, since_eeg_time, latency)
+        print(markername, timestamp, elapsed_time, first_eeg_timestamp, since_eeg_time, latency)
       
         # Combine marker name and latency into a single string
         marker_data = f"{markername}:{latency:.3f}"
