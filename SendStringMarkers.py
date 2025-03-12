@@ -55,7 +55,7 @@ def main():
         since_eeg_time = start_time - first_eeg_timestamp
         latency = srate * (elapsed_time + since_eeg_time)
         markername = [random.choice(markernames)]
-        print(markername, timestamp, elapsed_time, eeg_time, latency)
+        print(markername, timestamp, elapsed_time, since_eeg_time, latency)
       
         # Combine marker name and latency into a single string
         marker_data = f"{markername}:{latency:.3f}"
