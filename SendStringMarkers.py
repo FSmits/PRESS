@@ -47,22 +47,22 @@ def main():
     markernames = ['Test', 'Blah', 'Marker', 'XXX', 'Testtest', 'Test-1-2-3']
     
     # Get EEG stream timestamp to synchronize markers (previously by local_clock: start_time = local_clock() )
-    _, start_time = eeg_inlet.pull_sample(timeout=5)
+    _, start_time = eeg_inlet.pull_sample(timeout=0.01)
     srate = 256
-    since_eeg_time = first_eeg_timestamp - (start_time * srate)
+    since_eeg_time = start_time - first_eeg_timestamp
    
     while True:
 
         # get a new sample (you can also omit the timestamp part if you're not interested in it)
         # Get EEG stream timestamp to synchronize markers (previously by local_clock: start_time = local_clock() )
-         _, timestamp = eeg_inlet.pull_sample(timeout=5)
+         _, timestamp = eeg_inlet.pull_sample(timeout=0.01)
         elapsed_time = timestamp - start_time
         latency = srate * (elapsed_time + since_eeg_time)
         markername = [random.choice(markernames)]
         print(markername, timestamp, elapsed_time, first_eeg_timestamp, since_eeg_time, latency)
       
         # Combine marker name and latency into a single string
-        marker_data = f"{markername}:{latency:.3f}"
+        marker_data = f"{markername}:{elapsed_time:.3f}"
 
         print(f"Sent Marker: {marker_data}, Timestamp: {timestamp}")
 
