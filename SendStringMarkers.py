@@ -38,7 +38,6 @@ def main():
       
         # pick a sample to send an wait for a bit
         outlet.push_sample(markername, timestamp)
-        outlet.push_sample(timestamp)
         time.sleep(3.1)
 
 
