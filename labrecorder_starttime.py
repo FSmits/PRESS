@@ -10,7 +10,7 @@ print("Looking for EEG stream...")
 streams = resolve_stream('type', 'EEG')  # Change 'EEG' to whatever your EEG stream type is
 
 # Get the first EEG inlet
-inlet = streams[0]
+inlet = streams[0].open_stream()
 
 # Wait for LabRecorder to start recording
 print("Waiting for the first EEG sample...")
