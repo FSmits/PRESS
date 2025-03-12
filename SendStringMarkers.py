@@ -39,6 +39,8 @@ def main():
     if first_eeg_timestamp is None:
         print("Error: Could not retrieve EEG timestamp.")
         return
+
+    eeg_start_time, _ = eeg_inlet.pull_sample()
     
     # Get EEG stream timestamp to synchronize markers (previously by local_clock: start_time = local_clock() )
     start_time = time.time()
@@ -63,7 +65,9 @@ def main():
         elapsed_time = timestamp - first_eeg_timestamp
         latency = srate * elapsed_time
         markername = [random.choice(markernames)]
-        print(markername, timestamp, elapsed_time, first_eeg_timestamp, delta, real_time, latency)
+        current_time = local_clock()
+        sample_index = int((current_time - eeg_start_time) * SFREQ)
+        print(markername, timestamp, elapsed_time, first_eeg_timestamp, sample_index, latency)
       
         # Combine marker name and latency into a single string
         marker_data = f"{markername}:{timestamp:.3f}"
@@ -71,7 +75,7 @@ def main():
         print(f"Sent Marker: {marker_data}, Timestamp: {timestamp}")
 
         # Send as a single-element list
-        outlet.push_sample([marker_data], timestamp)
+        outlet.push_sample([sample_index])
         
         time.sleep(1.7)
 
