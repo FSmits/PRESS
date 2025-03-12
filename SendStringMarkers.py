@@ -60,7 +60,7 @@ def main():
         # get a new sample (you can also omit the timestamp part if you're not interested in it)
         # Get EEG stream timestamp to synchronize markers (previously by local_clock: timestamp = local_clock() )
         timestamp = time.time()
-        elapsed_time = timestamp - start_time
+        elapsed_time = timestamp - first_eeg_timestamp
         latency = srate * elapsed_time
         markername = [random.choice(markernames)]
         print(markername, timestamp, elapsed_time, first_eeg_timestamp, delta, real_time, latency)
