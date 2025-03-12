@@ -3,6 +3,7 @@
 import random
 import time
 import keyboard
+import datetime
 
 from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_stream,local_clock
 
@@ -41,29 +42,28 @@ def main():
     if first_eeg_timestamp is None:
         print("Error: Could not retrieve EEG timestamp.")
         return
-
-    print("Sending triggers... Press Ctrl+C to stop.")
-
-    markernames = ['Test', 'Blah', 'Marker', 'XXX', 'Testtest', 'Test-1-2-3']
     
     # Get EEG stream timestamp to synchronize markers (previously by local_clock: start_time = local_clock() )
-    streams = resolve_stream('type', 'EEG')  # Search for EEG streams
-    inlet = StreamInlet(streams[0])  # Connect to the first found EEG stream
-    _, start_time = eeg_inlet.pull_sample(timeout=5)
+    start_time = local_clock()
+    # Calculate the difference (delta) between the sample's timestamp and the current LSL time
+    delta = first_eeg_timestamp - start_time
+    # Convert the LSL timestamp to the actual time by adjusting with the delta
+    real_time = time.time() - delta  # Real-world time in seconds
+
+    markernames = ['Test', 'Blah', 'Marker', 'XXX', 'Testtest', 'Test-1-2-3']
     srate = 256
-    since_eeg_time = start_time - first_eeg_timestamp
+
+    print("Sending triggers... Press Ctrl+C to stop.")
    
     while True:
 
         # get a new sample (you can also omit the timestamp part if you're not interested in it)
         # Get EEG stream timestamp to synchronize markers (previously by local_clock: start_time = local_clock() )
-        streams = resolve_stream('type', 'EEG')  # Search for EEG streams
-        inlet = StreamInlet(streams[0])  # Connect to the first found EEG stream
-        _, timestamp = eeg_inlet.pull_sample(timeout=5)
+        timestamp = local_clock()
         elapsed_time = timestamp - start_time
-        latency = srate * 1000 * (elapsed_time + since_eeg_time)
+        latency = srate * elapsed_time
         markername = [random.choice(markernames)]
-        print(markername, timestamp, elapsed_time, first_eeg_timestamp, since_eeg_time, latency)
+        print(markername, timestamp, elapsed_time, first_eeg_timestamp, delta, real_time, latency)
       
         # Combine marker name and latency into a single string
         marker_data = f"{markername}:{timestamp:.3f}"
