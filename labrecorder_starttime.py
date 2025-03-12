@@ -3,7 +3,7 @@ import time
 import keyboard
 import datetime
 
-from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_stream,local_clock
+from pylsl import StreamOutlet, StreamInlet, resolve_stream,local_clock
 
 # Resolve the EEG stream
 print("Looking for EEG stream...")
