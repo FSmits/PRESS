@@ -56,12 +56,13 @@ def main():
         elapsed_time = timestamp - first_eeg_timestamp
         latency = srate * elapsed_time
         markername = [random.choice(markernames)]
-        print(markername, timestamp, elapsed_time, first_eeg_timestamp, latency)
+        clocktime = local_clock()
+        print(markername, timestamp, elapsed_time, first_eeg_timestamp, latency, clocktime)
       
         # Combine marker name and latency into a single string
-        marker_data = f"{markername}:{latency:.3f}"
+        marker_data = f"{markername}:{clocktime:.3f}"
 
-        print(f"Sent Marker: {marker_data}, Timestamp: {latency}")
+        print(f"Sent Marker: {marker_data}, Timestamp: {clocktime}")
 
         # Send as a single-element list
         outlet.push_sample([marker_data])
