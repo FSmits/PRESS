@@ -2,9 +2,17 @@
 
 import random
 import time
+import keyboard
 
-from pylsl import StreamInfo, StreamOutlet, resolve_stream,local_clock
+from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_stream,local_clock
 
+def wait_for_eeg_stream():
+    """Wait for an EEG stream to appear and return its inlet."""
+    print("Waiting for EEG stream...")
+    streams = resolve_stream('type', 'EEG')  # Search for EEG streams
+    inlet = StreamInlet(streams[0])  # Connect to the first found EEG stream
+    print("EEG stream found!")
+    return inlet
 
 def main():
     # first create a new stream info (here we set the name to MyMarkerStream,
@@ -22,6 +30,18 @@ def main():
 
     print("Marker stream created. Waiting for EEG stream...")
 
+    # Wait for EEG stream before sending triggers
+    eeg_inlet = wait_for_eeg_stream()
+
+    # Wait for user to start the experiment
+    input("Press Enter to start sending markers...")
+
+    # Get EEG stream timestamp to synchronize markers
+    _, first_eeg_timestamp = eeg_inlet.pull_sample(timeout=5)
+    if first_eeg_timestamp is None:
+        print("Error: Could not retrieve EEG timestamp.")
+        return
+
     print("Sending triggers... Press Ctrl+C to stop.")
 
     markernames = ['Test', 'Blah', 'Marker', 'XXX', 'Testtest', 'Test-1-2-3']
@@ -31,8 +51,9 @@ def main():
 
         # get a new sample (you can also omit the timestamp part if you're not interested in it)
         timestamp = local_clock()
-        elapsed_time = local_clock() - start_time
-        latency = srate * elapsed_time
+        elapsed_time = timestamp - start_time
+        eeg_time = timestamp - first_eeg_timestamp
+        latency = srate * eeg_time
         markername = [random.choice(markernames)]
         print(markername, timestamp, elapsed_time, latency)
       
