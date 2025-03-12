@@ -66,7 +66,7 @@ def main():
         latency = srate * elapsed_time
         markername = [random.choice(markernames)]
         current_time = local_clock()
-        sample_index = int((current_time - eeg_start_time) * SFREQ)
+        sample_index = int((current_time - eeg_start_time) * srate)
         print(markername, timestamp, elapsed_time, first_eeg_timestamp, sample_index, latency)
       
         # Combine marker name and latency into a single string
