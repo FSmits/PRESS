@@ -4,8 +4,15 @@ import random
 import time
 import keyboard
 import datetime
+import simpleaudio as sa
 
 from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_stream,local_clock
+
+def play_beep(frequency=1000, duration=300):  # Default: 1000 Hz, 300 ms
+    sample_rate = 44100  # 44.1 kHz sample rate
+    t = (duration / 1000.0)  # Convert to seconds
+    samples = (0.5 * sa.WaveObject.from_wave_file("beep.wav").play()).astype('float32')
+    sa.play_buffer(samples, 1, 4, sample_rate)
 
 def wait_for_eeg_stream():
     """Wait for an EEG stream to appear and return its inlet."""
@@ -66,6 +73,8 @@ def main():
 
         # Send as a single-element list
         outlet.push_sample([marker_data])
+
+        play_beep()  # Play beep sound
         
         time.sleep(60)
 
