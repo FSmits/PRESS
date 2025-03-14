@@ -57,7 +57,7 @@ def main():
             timestamp = time.time()
             elapsed_time = timestamp - first_eeg_timestamp
             
-            print(f"Probe {i+1}/{num_probes}: {markername}, Timestamp: {timestamp:.3f}, Clock: {clocktime:.3f}")
+            print(f"Probe {i+1}/{num_probes}: {markername}, Timestamp: {timestamp:.3f}")
 
             # Send LSL marker
             outlet.push_sample([f"{markername}:{timestamp:.3f}"])
