@@ -63,29 +63,28 @@ def main():
     try:
         for i in range(num_markers):
 
-        # get a new sample (you can also omit the timestamp part if you're not interested in it)
-        timestamp = time.time()
-        elapsed_time = timestamp - first_eeg_timestamp
-        latency = srate * elapsed_time
+            # get a new sample (you can also omit the timestamp part if you're not interested in it)
+            timestamp = time.time()
+            elapsed_time = timestamp - first_eeg_timestamp
+            latency = srate * elapsed_time
 
-        # Select marker based on count
-        markername = markernames[i % len(markernames)]
-        marker_count += 1  # Increment counter
+            # Select marker based on count
+            markername = markernames[i % len(markernames)]
       
-        # Combine marker name and latency into a single string
-        marker_data = f"{markername}:{timestamp:.3f}"
+            # Combine marker name and latency into a single string
+            marker_data = f"{markername}:{timestamp:.3f}"
 
-        print(f"Sent Marker: {marker_data}, Timestamp: {timestamp}")
+            print(f"Sent Marker: {marker_data}, Timestamp: {timestamp}")
 
-        # Send as a single-element list
-        outlet.push_sample([marker_data])
+            # Send as a single-element list
+            outlet.push_sample([marker_data])
 
-        play_beep()  # Play beep sound
+            play_beep()  # Play beep sound
 
-        # Select sleep time based on predefined list
-        time2sleep = markersleep[i % len(markersleep)]
-        print(f"Sleeping for {time2sleep} seconds before next beep...")
-        time.sleep(time2sleep)
+            # Select sleep time based on predefined list
+            time2sleep = markersleep[i % len(markersleep)]
+            print(f"Sleeping for {time2sleep} seconds before next beep...")
+            time.sleep(time2sleep)
 
         print("Experiment complete. 20 startle probes sent.")
 
