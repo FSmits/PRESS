@@ -50,26 +50,26 @@ def main():
         print("Error: Could not retrieve EEG timestamp.")
         return
 
-    markernames = ['open', 'close', 'open', 'close', 'open_2much', 'close_2much', 'open_2much', 'close_2much', 'open_2much', 'close_2much', 'open_2much', 'close_2much', 'open_2much', 'close_2much']
+    markernames = ['open', 'close', 'open', 'close', 'end']
+    markersleep = [60, 60, 60, 60, 0.01]
+    num_markers = 5
     srate = 256
 
     # Wait for user to start the experiment
     input("Press Enter to start sending markers...")
 
-    marker_count = 0  # Initialize counter
-
     print("Sending triggers... Press Ctrl+C to stop.")
    
-    while True:
+    try:
+        for i in range(num_markers):
 
         # get a new sample (you can also omit the timestamp part if you're not interested in it)
-        # Get EEG stream timestamp to synchronize markers (previously by local_clock: timestamp = local_clock() )
         timestamp = time.time()
         elapsed_time = timestamp - first_eeg_timestamp
         latency = srate * elapsed_time
 
         # Select marker based on count
-        markername = markernames[marker_count % len(markernames)]
+        markername = markernames[i % len(markernames)]
         marker_count += 1  # Increment counter
       
         # Combine marker name and latency into a single string
@@ -81,8 +81,16 @@ def main():
         outlet.push_sample([marker_data])
 
         play_beep()  # Play beep sound
-        
-        time.sleep(60)
+
+        # Select sleep time based on predefined list
+        time2sleep = markersleep[i % len(markersleep)]
+        print(f"Sleeping for {time2sleep} seconds before next beep...")
+        time.sleep(time2sleep)
+
+        print("Experiment complete. 20 startle probes sent.")
+
+    except KeyboardInterrupt:
+        print("\nExperiment stopped.")
 
 
 if __name__ == '__main__':
