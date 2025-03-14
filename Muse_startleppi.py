@@ -68,6 +68,9 @@ def main():
         print("Error: Could not retrieve EEG timestamp.")
         return
 
+    print("Press Enter to start habituation startles")
+    input()
+
     # Run habituation phase
     habituation_phase(outlet)
 
