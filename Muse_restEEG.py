@@ -86,7 +86,7 @@ def main():
             print(f"Sleeping for {time2sleep} seconds before next beep...")
             time.sleep(time2sleep)
 
-        print("Experiment complete. 20 startle probes sent.")
+        print("Experiment: 4-minute resting-state EEG completed.")
 
     except KeyboardInterrupt:
         print("\nExperiment stopped.")
