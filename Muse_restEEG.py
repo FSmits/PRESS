@@ -50,11 +50,13 @@ def main():
         print("Error: Could not retrieve EEG timestamp.")
         return
 
-    markernames = ['Test', 'Blah', 'Marker', 'XXX', 'Testtest', 'Test-1-2-3']
+    markernames = ['open', 'close', 'open', 'close', 'open_2much', 'close_2much', 'open_2much', 'close_2much', 'open_2much', 'close_2much', 'open_2much', 'close_2much', 'open_2much', 'close_2much']
     srate = 256
 
     # Wait for user to start the experiment
     input("Press Enter to start sending markers...")
+
+    marker_count = 0  # Initialize counter
 
     print("Sending triggers... Press Ctrl+C to stop.")
    
@@ -65,9 +67,10 @@ def main():
         timestamp = time.time()
         elapsed_time = timestamp - first_eeg_timestamp
         latency = srate * elapsed_time
-        markername = [random.choice(markernames)]
-        clocktime = local_clock()
-        print(markername, timestamp, elapsed_time, first_eeg_timestamp, latency, clocktime)
+
+        # Select marker based on count
+        markername = markernames[marker_count % len(markernames)]
+        marker_count += 1  # Increment counter
       
         # Combine marker name and latency into a single string
         marker_data = f"{markername}:{timestamp:.3f}"
