@@ -9,7 +9,7 @@ def generate_white_noise(duration_s, sample_rate=44100, amplitude=1.0):
     Parameters:
     - duration_s: Duration of the noise in seconds.
     - sample_rate: Sampling rate in Hz.
-    - amplitude: Amplitude of the noise (0.005 for ~70 dB, 1.0 for ~100 dB).
+    - amplitude: Amplitude of the noise (0.025 for ~70 dB, 1.0 for ~100 dB).
     """
     num_samples = int(sample_rate * duration_s)
     noise = np.random.uniform(-amplitude, amplitude, num_samples).astype(np.float32)
@@ -23,7 +23,7 @@ def generate_white_noise(duration_s, sample_rate=44100, amplitude=1.0):
 
 # Play 70 dB noise for 5 seconds
 print("Playing 70 dB white noise...")
-generate_white_noise(duration_s=5, amplitude=0.005)
+generate_white_noise(duration_s=5, amplitude=0.025)
 
 # Pause before next sound
 time.sleep(2)
