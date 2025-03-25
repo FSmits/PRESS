@@ -47,3 +47,5 @@ for i = 1:size(EEG.event,2)-1
     EEG.event(i).latency = round(timestamps_delta(i) * srate); %EEGLAB wants latency in sampling points so multiply by sampling rate
 end
 
+% view:
+pop_eegplot( EEG, 1, 1, 1);
