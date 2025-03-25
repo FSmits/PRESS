@@ -34,15 +34,7 @@ def habituation_phase(outlet):
     print("Starting habituation phase: 6 startle probes before main experiment.")
 
     for i in range(num_habituation_probes):
-        timestamp = time.time()
-        print(f"Habituation Probe {i+1}/{num_habituation_probes}, Timestamp: {timestamp:.3f}")
-
-        # Send LSL marker
-        outlet.push_sample([f"habituation_probe:{timestamp:.3f}"])
-
-        # Play startle probe (100 dB)
-        generate_startle_probe(amplitude=1.0)
-
+ 
         # Intertrial interval (ITI) (10-20s)
         iti = random.uniform(10, 20)
 
@@ -51,6 +43,15 @@ def habituation_phase(outlet):
 
         print(f"Waiting {iti:.2f} seconds for next habituation probe...\n")
         time.sleep(iti)
+
+        timestamp = time.time()
+        print(f"Habituation Probe {i+1}/{num_habituation_probes}, Timestamp: {timestamp:.3f}")
+
+        # Send LSL marker
+        outlet.push_sample([f"habituation_probe:{timestamp:.3f}"])
+
+        # Play startle probe (100 dB)
+        generate_startle_probe(amplitude=1.0)
 
     print("Habituation phase complete.\n")
 
