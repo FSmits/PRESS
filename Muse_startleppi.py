@@ -51,7 +51,7 @@ def habituation_phase(outlet):
         outlet.push_sample([f"habituation_probe:{timestamp:.3f}"])
 
         # Play startle probe (100 dB)
-        generate_startle_probe(amplitude=1.0)
+        generate_startle_probe(amplitude=2.99)
 
     print("Habituation phase complete.\n")
 
@@ -103,7 +103,7 @@ def main():
             # Main Startle Probe (100 dB, 50 ms)
             print(f"Trial {i+1}/{num_probes}: Startle Probe (100 dB), Timestamp: {timestamp:.3f}")
             outlet.push_sample([f"probe:{timestamp:.3f}"])
-            generate_startle_probe(amplitude=1.0)  # 100 dB startle probe
+            generate_startle_probe(amplitude=2.99)  # 100 dB startle probe
 
             # Wait for next probe (random ITI between 10-20 seconds)
             iti = random.uniform(10, 20)
