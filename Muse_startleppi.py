@@ -45,7 +45,7 @@ def habituation_phase(outlet):
 
         # Intertrial interval (ITI) (10-20s)
         iti = random.uniform(10, 20)
-        if first_eeg_timestamp is None:
+        if i > 5
             iti = 0.5
         
         print(f"Waiting {iti:.2f} seconds for next habituation probe...\n")
