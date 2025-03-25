@@ -43,8 +43,11 @@ def habituation_phase(outlet):
         # Play startle probe (100 dB)
         generate_startle_probe(amplitude=1.0)
 
-        # Random ITI (10-20s)
+        # Intertrial interval (ITI) (10-20s)
         iti = random.uniform(10, 20)
+        if first_eeg_timestamp is None:
+            iti = 0.5
+        
         print(f"Waiting {iti:.2f} seconds for next habituation probe...\n")
         time.sleep(iti)
 
