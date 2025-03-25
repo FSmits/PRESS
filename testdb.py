@@ -30,6 +30,6 @@ time.sleep(2)
 
 # Play 105 dB noise for 5 seconds
 print("Playing 105 dB white noise...")
-generate_white_noise(duration_s=5, amplitude=1.41)
+generate_white_noise(duration_s=5, amplitude=2.99)
 
 print("Test complete.")
