@@ -79,7 +79,7 @@ def main():
             # Send as a single-element list
             outlet.push_sample([marker_data])
 
-            play_beep()  # Play beep sound
+            play_beep(volume=0.5)  # Play beep sound
 
             # Select sleep time based on predefined list
             time2sleep = markersleep[i % len(markersleep)]
