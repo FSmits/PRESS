@@ -8,7 +8,7 @@ import simpleaudio as sa
 
 from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_stream,local_clock
 
-def play_beep(volume=1.0):  
+def play_beep():  
     """Plays a beep sound from beep.wav"""
     try:
         wave_obj = sa.WaveObject.from_wave_file("beep.wav")
@@ -79,7 +79,7 @@ def main():
             # Send as a single-element list
             outlet.push_sample([marker_data])
 
-            play_beep(volume=0.5)  # Play beep sound
+            play_beep()  # Play beep sound
 
             # Select sleep time based on predefined list
             time2sleep = markersleep[i % len(markersleep)]
