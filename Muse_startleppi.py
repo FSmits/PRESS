@@ -96,8 +96,8 @@ def main():
                 # Pre-Pulse (70 dB, 50 ms) occurs 100 ms before the main probe
                 print(f"Trial {i+1}/{num_probes}: Pre-Pulse (70 dB) + Startle Probe (100 dB), Timestamp: {timestamp:.3f}")
                 outlet.push_sample([f"pre-pulse:{timestamp:.3f}"])
-                generate_startle_probe(amplitude=0.5)  # 70 dB pre-pulse
-                time.sleep(0.1)  # 100 ms gap before main probe
+                generate_startle_probe(amplitude=0.025)  # 70 dB pre-pulse
+                time.sleep(0.12)  # 120 ms gap before main probe
 
             # Main Startle Probe (100 dB, 50 ms)
             print(f"Trial {i+1}/{num_probes}: Startle Probe (100 dB), Timestamp: {timestamp:.3f}")
