@@ -88,6 +88,11 @@ def main():
 
     print("Experiment started. Sending 20 probes over 5 minutes...")
 
+    # Wait for next probe (random ITI between 10-20 seconds)
+    iti = random.uniform(10, 20)
+    print(f"Waiting {iti:.2f} seconds for next trial...\n")
+    time.sleep(iti)
+
     try:
         for i in range(num_probes):
             timestamp = time.time()
