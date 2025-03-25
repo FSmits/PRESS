@@ -8,7 +8,7 @@ import simpleaudio as sa
 
 from pylsl import StreamInfo, StreamOutlet, StreamInlet, resolve_stream,local_clock
 
-def play_beep():  
+def play_beep(volume=1.0):  
     """Plays a beep sound from beep.wav"""
     try:
         wave_obj = sa.WaveObject.from_wave_file("beep.wav")
