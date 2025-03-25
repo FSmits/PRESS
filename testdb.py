@@ -28,8 +28,8 @@ generate_white_noise(duration_s=5, amplitude=0.025)
 # Pause before next sound
 time.sleep(2)
 
-# Play 100 dB noise for 5 seconds
-print("Playing 100 dB white noise...")
-generate_white_noise(duration_s=5, amplitude=1.0)
+# Play 105 dB noise for 5 seconds
+print("Playing 105 dB white noise...")
+generate_white_noise(duration_s=5, amplitude=1.41)
 
 print("Test complete.")
