@@ -12,30 +12,21 @@
 #
 # -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
 
-# load required packages
+# clear environment
+rm(list=ls())
+
+
+# ------------------------------------------------------------------------------------------------ #
+# ----    Settings & Dependencies ----
+# ------------------------------------------------------------------------------------------------ #
+
+# ---- Required packages ----
 require("reshape2")
 require("ggplot2")
 require("tidyverse")
 require("dplyr")
 
-# clear environment
-rm(list=ls())
-
-# fill in the path to the PRESS research folder
-path2dir <- '/Volumes/heronderzoek-6/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/'
-
-# Load subject ID
-# NOTE: Subject IDs differ per instrument, even though it's the same study (privacy and data sharing reasons). 
-# link different subject IDs per participant with SubjectID_koppelbestand_Castor-PVT-Garmin.csv in the PRESS research folder (/heronderzoek/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/)
-# read subject IDs voor PVT-data:
-subID     <- read.csv( paste(path2dir,'SubjectID_koppelbestand_Castor-PVT-Garmin.csv', sep="") )
-
-
-# ---- Process raw data ----
-# create a list of all PVT raw data files (.csv)
-path2file <- paste(path2dir,'0. Ruwe data (niet in werken)/PVT/data_PVT_T0-T3_export2/csv files/', sep="")
-data_list <- list.files(path=path2file, pattern=NULL, all.files=FALSE,full.names=TRUE)
-
+# ----- Functions ------
 pvt_func <- function(filepath){
   # load the raw data file
   raw <- read.csv(filepath)
@@ -61,6 +52,28 @@ pvt_func <- function(filepath){
   return(c(PVTid, datetime, falseresp, lapses, rt_mean, rt_sd))
 }
 
+
+# ---- Working directory ----
+# fill in the path to the PRESS research folder
+path2dir <- '/Volumes/heronderzoek-6/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/'
+
+
+# ------------------------------------------------------------------------------------------------ #
+# ----  Data Processing ----
+# ------------------------------------------------------------------------------------------------ #
+
+# ---- Load subject ID (not required for this script) ----
+# NOTE: Subject IDs differ per instrument, even though it's the same study (privacy and data sharing reasons). 
+# link different subject IDs per participant with SubjectID_koppelbestand_Castor-PVT-Garmin.csv in the PRESS research folder (/heronderzoek/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/)
+# read subject IDs voor PVT-data:
+subID     <- read.csv( paste(path2dir,'SubjectID_koppelbestand_Castor-PVT-Garmin.csv', sep="") )
+
+
+# ---- Process raw PVT data ----
+# create a list of all PVT raw data files (.csv)
+path2file <- paste(path2dir,'0. Ruwe data (niet in werken)/PVT/data_PVT_T0-T3_export2/csv files/', sep="")
+data_list <- list.files(path=path2file, pattern=NULL, all.files=FALSE,full.names=TRUE)
+
 # create a dataframe to save outcomes
 data <- data.frame()
 # loop through data files to extract outcomes
@@ -83,8 +96,7 @@ for(i in 1:length(data_list)){
   rm(out)
 }
 
-
-# ---- Clean the dataframe ----
+# Clean the dataframe
 # add column names
 colnames(data) <- c("PVTid", "datetime", "falseresp", "lapses", "rt_mean", "rt_sd")
 # remove empty rows
@@ -102,7 +114,11 @@ data$timepoint[substr(data$datetime,1,10)=="2025-04-15"] <- "M3"
 data$timepoint[substr(data$datetime,1,10)=="2025-04-24"] <- "M4"
 
 
-# ---- Save data frame ----
+# ------------------------------------------------------------------------------------------------ #
+# ----  Save outcomes ----
+# ------------------------------------------------------------------------------------------------ #
+
+# Write dataframe to .csv file
 write.csv(data, 
           file = paste(path2dir,'1. Verwerkte data/PVT/', 'PVT_readouts.csv',sep=""),
           row.names = FALSE)
