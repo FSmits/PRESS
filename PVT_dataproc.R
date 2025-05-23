@@ -1,8 +1,16 @@
-# R-script to read and process PVT data
-# - Study name: PRESS (dossiernr.: 25U-0078)
-# - Measure/instrument: smartphone-based Psychommotor Vigilance Task (PVT)
-# - Data type: behavioral performance (reaction times and accuracy)
-# - Design: within-subjects longitudinal, 4 timepoints (M1: 27th 03/'25, M2: 10th-11th 04/'25, M3: 15th 04/'25,, M4: 24th 04/'25)
+# -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
+#
+# Description: R-script to read and process PVT data
+#             - Study name: PRESS (dossiernr.: 25U-0078)
+#             - Measure/instrument: smartphone-based Psychommotor Vigilance Task (PVT)
+#             - Data type: behavioral performance (reaction times and accuracy)
+#             - Design: within-subjects longitudinal, 4 timepoints (M1: 27th 03/'25, M2: 10th-11th 04/'25, M3: 15th 04/'25,, M4: 24th 04/'25)
+#
+# Date:         May 2025
+# R.version:    4.4.0 (2024-04-24) -- "Puppy Cup"
+# Rstudio:      2025.05.0+496
+#
+# -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 
 
 # load required packages
 require("reshape2")
