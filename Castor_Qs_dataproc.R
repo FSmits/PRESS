@@ -42,7 +42,8 @@ library(ggpubr)
 
 # ----- working directory ------
 # external volume, change value if necessary 
-setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", sep = ""))
+#setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", sep = ""))
+setwd(paste("/Volumes/heronderzoek-6/Groep Geuze/25U-0078_PRESS/", sep = ""))
 
 # ~/Networkshares/ of ~/Volumes/
 
@@ -260,9 +261,13 @@ df_3_metingen <- df_3_metingen %>%
 df_3_metingen$Survey.Package.Name <- factor(df_3_metingen$Survey.Package.Name,
                                             levels = c("Meting 1 vragenlijsten", "Meting 2-3 gemiddelde", "Meting 4 vragenlijsten"))
 
-df_3_metingen %>%
+# # ALTERNATIEF voor PLOT: verwijder M2 (behoud alleen M2 van tijdens-oefening)
+# df_3_metingen <- df[-which(df$Survey.Package.Name=="Meting 3 vragenlijsten"),] 
+
+sumstats <- df_3_metingen %>%
   group_by(Survey.Package.Name) %>%
   get_summary_stats(sum, type = "mean_sd")
+sumstats
 
 
 # Boxplot
@@ -306,6 +311,17 @@ final_plot <- bxp +
 fileName <- paste("boxplot_repeatedMeasuresAnova_", vragenlijst, "_3momenten.svg", sep = "")
 ggsave(paste("F_DataAnalysis/1f_DataAnalysisScripts/", fileName, sep = ""), plot = final_plot,
        width = 260, height = 200, units = "mm")
+
+# Visualisation: simple bar plot
+showbarplot <- ggplot(sumstats) +
+  geom_bar( aes(x=Survey.Package.Name, y=mean), stat="identity", fill="#136497", alpha=0.8) +
+  geom_point(aes(x=Survey.Package.Name, y=mean), size=3) +
+  geom_errorbar( aes(x=Survey.Package.Name, ymin=mean-sd, ymax=mean+sd), width=0.2, colour="black", alpha=0.9, size=0.3) +
+  ggtitle("Vragenlijst: Vermoeidheid") +
+  xlab("Meetmoment") +
+  ylab("Gemiddelde somscore") +
+  theme(panel.background = element_rect(fill="white",colour="white"), panel.border = element_blank(), panel.grid.major = element_line(colour = "grey"), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
+
 
 
 
