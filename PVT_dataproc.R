@@ -23,8 +23,12 @@ rm(list=ls())
 # ---- Required packages ----
 require("reshape2")
 require("ggplot2")
+require("ggpubr")
+require("ggstatsplot") #install.packages("ggstatsplot")
 require("tidyverse")
 require("dplyr")
+require("plyr")
+require("rstatix")
 
 # ----- Functions ------
 pvt_func <- function(filepath){
@@ -53,14 +57,9 @@ pvt_func <- function(filepath){
 }
 
 
-# ---- Working directory ----
+# ---- Working directory and Subject ID ----
 # fill in the path to the PRESS research folder
 path2dir <- '/Volumes/heronderzoek-6/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/'
-
-
-# ------------------------------------------------------------------------------------------------ #
-# ----  Data Processing ----
-# ------------------------------------------------------------------------------------------------ #
 
 # ---- Load subject ID (not required for this script) ----
 # NOTE: Subject IDs differ per instrument, even though it's the same study (privacy and data sharing reasons). 
@@ -68,6 +67,10 @@ path2dir <- '/Volumes/heronderzoek-6/Groep Geuze/25U-0078_PRESS/E_ResearchData/2
 # read subject IDs voor PVT-data:
 subID     <- read.csv( paste(path2dir,'SubjectID_koppelbestand_Castor-PVT-Garmin.csv', sep="") )
 
+
+# ------------------------------------------------------------------------------------------------ #
+# ----  Data Processing ----
+# ------------------------------------------------------------------------------------------------ #
 
 # ---- Process raw PVT data ----
 # create a list of all PVT raw data files (.csv)
@@ -115,6 +118,82 @@ data$timepoint[substr(data$datetime,1,10)=="2025-04-24"] <- "M4"
 
 
 # ------------------------------------------------------------------------------------------------ #
+# ----  Data Analysis ----
+# ------------------------------------------------------------------------------------------------ #
+
+# ---- Repeated measures ANOVA M1, M3, M4 ----
+# --------------------------------------------- #
+# Note: Laat M2 uit analyses vanwege groot aantal missende data (data van slechts 3 participanten beschikbaar)
+
+# create data frame for analyses with only data from timepoint M1, M3 and M4 
+df <- data[which(data$timepoint=="M1"|data$timepoint=="M3"|data$timepoint=="M4"),]
+# add fake PVT-ID for the dataset with missing ID
+df$PVTid[is.na(df$PVTid)] <- 9999
+
+df %>%
+  get_summary_stats(rt_mean, type = "mean_sd")
+
+# Boxplot
+bxp <- ggboxplot(df, x = "timepoint", y = "rt_mean", fill="timepoint") +
+  scale_colour_manual(values=c("#b8baba","#136497", "#c1d9e8")) + scale_fill_manual(values=c("#b8baba","#136497", "#c1d9e8"))
+bxp 
+
+# Histogram
+ggplot(df, aes(x=rt_mean, color=timepoint)) +
+  geom_histogram(fill="white")
+
+# Shapiro
+df %>%
+  group_by(timepoint) %>%
+  shapiro_test(rt_mean)
+
+# Anova
+res.aov <- anova_test(data = df, dv = rt_mean, wid = PVTid, within = timepoint)
+get_anova_table(res.aov)
+
+# Pairwise comparisons
+pwc <- df %>%
+  pairwise_t_test(rt_mean ~ timepoint, paired = FALSE, #Note: paired should be TRUE, but because of missing data the number of participants with full datasets is too small to make the pairwise comparisons
+                  p.adjust.method = "bonferroni")
+pwc
+
+# Visualization: box plots with p-values
+pwc <- pwc %>% add_xy_position(x = "timepoint")
+stats_plot <- bxp + 
+  stat_pvalue_manual(pwc, step.increase = 0.07) +
+  geom_jitter(color="black", size=0.4, alpha=0.9) +
+  labs(title = "M1: Voor - M3: Oefening - M4: Na",
+       subtitle = get_test_label(res.aov, detailed = TRUE),
+       caption = get_pwc_label(pwc)) +
+  xlab("Meetmoment") +
+  ylab("Gemiddelde reactietijd") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+# Visualisation: violin plots with individual points and stats
+plt <- ggbetweenstats(
+  data = df,
+  x = timepoint,
+  y = rt_mean)
+
+# Visualisation: simple bar plot
+datp <- ddply(df, c("timepoint"), summarise,
+                 N    = sum(!is.na(rt_mean)),
+                 mean = mean(rt_mean, na.rm=TRUE),
+                 sd   = sd(rt_mean, na.rm=TRUE),
+                 se   = sd / sqrt(N) )
+showbarplot <- ggplot(datp) +
+  geom_bar( aes(x=timepoint, y=mean), stat="identity", fill="#136497", alpha=0.8) +
+  geom_point(aes(x=timepoint, y=mean), size=3) +
+  geom_errorbar( aes(x=timepoint, ymin=mean-sd, ymax=mean+sd), width=0.2, colour="black", alpha=0.9, size=0.3) +
+  ggtitle("Reactietijden Alertheidstaak") +
+  xlab("Meetmoment") +
+  ylab("Gemiddelde reactietijd") +
+  theme(panel.background = element_rect(fill="white",colour="white"), panel.border = element_blank(), panel.grid.major = element_line(colour = "grey"), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
+  
+
+
+
+# ------------------------------------------------------------------------------------------------ #
 # ----  Save outcomes ----
 # ------------------------------------------------------------------------------------------------ #
 
@@ -122,4 +201,5 @@ data$timepoint[substr(data$datetime,1,10)=="2025-04-24"] <- "M4"
 write.csv(data, 
           file = paste(path2dir,'1. Verwerkte data/PVT/', 'PVT_readouts.csv',sep=""),
           row.names = FALSE)
-
+# Re-load this data if needed:
+# data <- read.csv(paste(path2dir,'1. Verwerkte data/PVT/', 'PVT_readouts.csv',sep=""))
