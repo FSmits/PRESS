@@ -30,6 +30,17 @@ require("dplyr")
 require("plyr")
 require("rstatix")
 
+# ---- Working directory and Subject ID ----
+# fill in the path to the PRESS research folder
+path2dir <- '/Volumes/heronderzoek-6/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/'
+
+# ---- Load subject ID (not required for this script) ----
+# NOTE: Subject IDs differ per instrument, even though it's the same study (privacy and data sharing reasons). 
+# link different subject IDs per participant with SubjectID_koppelbestand_Castor-PVT-Garmin.csv in the PRESS research folder (/heronderzoek/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/)
+# read subject IDs voor PVT-data:
+subID     <- read.csv( paste(path2dir,'SubjectID_koppelbestand_Castor-PVT-Garmin.csv', sep="") )
+
+
 # ----- Functions ------
 pvt_func <- function(filepath){
   # load the raw data file
@@ -55,17 +66,6 @@ pvt_func <- function(filepath){
   # return the computed values:
   return(c(PVTid, datetime, falseresp, lapses, rt_mean, rt_sd))
 }
-
-
-# ---- Working directory and Subject ID ----
-# fill in the path to the PRESS research folder
-path2dir <- '/Volumes/heronderzoek-6/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/'
-
-# ---- Load subject ID (not required for this script) ----
-# NOTE: Subject IDs differ per instrument, even though it's the same study (privacy and data sharing reasons). 
-# link different subject IDs per participant with SubjectID_koppelbestand_Castor-PVT-Garmin.csv in the PRESS research folder (/heronderzoek/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/)
-# read subject IDs voor PVT-data:
-subID     <- read.csv( paste(path2dir,'SubjectID_koppelbestand_Castor-PVT-Garmin.csv', sep="") )
 
 
 # ------------------------------------------------------------------------------------------------ #
@@ -130,8 +130,10 @@ df <- data[which(data$timepoint=="M1"|data$timepoint=="M3"|data$timepoint=="M4")
 # add fake PVT-ID for the dataset with missing ID
 df$PVTid[is.na(df$PVTid)] <- 9999
 
-df %>%
-  get_summary_stats(rt_mean, type = "mean_sd")
+sumstats <- df %>%
+  group_by(timepoint) %>%
+  get_summary_stats(rt_mean, type = "mean_sd") 
+sumstats
 
 # Boxplot
 bxp <- ggboxplot(df, x = "timepoint", y = "rt_mean", fill="timepoint") +
@@ -176,12 +178,12 @@ plt <- ggbetweenstats(
   y = rt_mean)
 
 # Visualisation: simple bar plot
-datp <- ddply(df, c("timepoint"), summarise,
-                 N    = sum(!is.na(rt_mean)),
-                 mean = mean(rt_mean, na.rm=TRUE),
-                 sd   = sd(rt_mean, na.rm=TRUE),
-                 se   = sd / sqrt(N) )
-showbarplot <- ggplot(datp) +
+# datp <- ddply(df, c("timepoint"), summarise,
+#                  N    = sum(!is.na(rt_mean)),
+#                  mean = mean(rt_mean, na.rm=TRUE),
+#                  sd   = sd(rt_mean, na.rm=TRUE),
+#                  se   = sd / sqrt(N) )
+showbarplot <- ggplot(sumstats) +
   geom_bar( aes(x=timepoint, y=mean), stat="identity", fill="#136497", alpha=0.8) +
   geom_point(aes(x=timepoint, y=mean), size=3) +
   geom_errorbar( aes(x=timepoint, ymin=mean-sd, ymax=mean+sd), width=0.2, colour="black", alpha=0.9, size=0.3) +
