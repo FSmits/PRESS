@@ -261,9 +261,6 @@ df_3_metingen <- df_3_metingen %>%
 df_3_metingen$Survey.Package.Name <- factor(df_3_metingen$Survey.Package.Name,
                                             levels = c("Meting 1 vragenlijsten", "Meting 2-3 gemiddelde", "Meting 4 vragenlijsten"))
 
-# # ALTERNATIEF voor PLOT: verwijder M2 (behoud alleen M2 van tijdens-oefening)
-# df_3_metingen <- df[-which(df$Survey.Package.Name=="Meting 3 vragenlijsten"),] 
-
 sumstats <- df_3_metingen %>%
   group_by(Survey.Package.Name) %>%
   get_summary_stats(sum, type = "mean_sd")
