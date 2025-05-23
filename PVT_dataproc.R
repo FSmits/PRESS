@@ -4,7 +4,7 @@
 #             - Study name: PRESS (dossiernr.: 25U-0078)
 #             - Measure/instrument: smartphone-based Psychommotor Vigilance Task (PVT)
 #             - Data type: behavioral performance (reaction times and accuracy)
-#             - Design: within-subjects longitudinal, 4 timepoints (M1: 27th 03/'25, M2: 10th-11th 04/'25, M3: 15th 04/'25,, M4: 24th 04/'25)
+#             - Design: within-subjects longitudinal, 4 timepoints (M1: 27th 03/'25, M2: 10th and 11th 04/'25, M3: 15th 04/'25,, M4: 24th 04/'25)
 #
 # Date:         May 2025
 # R.version:    4.4.0 (2024-04-24) -- "Puppy Cup"
