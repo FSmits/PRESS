@@ -8,7 +8,7 @@
 #             - Data type: Self-report, online (M1, M3, M4) or paper-pencil (M2)
 #             - Design: within-subjects longitudinal, 4 timepoints (M1: 27th 03/'25, M2: 10th and 11th 04/'25, M3: 15th 04/'25,, M4: 24th 04/'25)
 #
-# Date:         May 2025
+# Date:         May 2025, update:July 2025
 # R.version:    4.4.0 (2024-04-24)
 # Rstudio:      2025.05.0+496
 #
@@ -35,6 +35,7 @@ library(rstatix)
 # visualizations
 library(ggplot2)
 library(ggpubr)
+library(ggstatsplot)
 
 # ----- Functions ------
 
@@ -96,6 +97,18 @@ df_vermoeidheid <- df_vermoeidheid %>%
   filter(Survey.Progress == 100) %>%
   dplyr::select("Castor.Participant.ID", "Survey.Package.Name", starts_with("PROMIS_")) %>%
   mutate(sum = rowSums(dplyr::select(., starts_with("PROMIS_")), na.rm = TRUE))
+
+# Data Visual Analogue Scales (VAS) 
+# -------------------------- #
+df_vas <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Alertheid_prikkelbaarheid_en_schrikachtigheid_export_20250514_clean.csv", show_col_types = FALSE)
+df_vas <- df_vas %>%
+  mutate(measurement = case_when(Survey.Package.Name == "Meting 1 vragenlijsten" ~ "T0",
+                                 Survey.Package.Name == "Meting 2 vragenlijsten" ~ "T1",
+                                 Survey.Package.Name == "Meting 3 vragenlijsten" ~ "T2",
+                                 Survey.Package.Name == "Meting 4 vragenlijsten" ~ "T3",
+                                 TRUE ~ NA_character_),
+         Castor.ID = Castor.Participant.ID)
+
 
 
 
@@ -238,6 +251,17 @@ ggsave(paste("F_DataAnalysis/1f_DataAnalysisScripts/", fileName, sep = ""), plot
 
 # ---- Repeated measures ANOVA (herhaal met gemiddelde van M2 en M3) ----
 # ----------------------------------------------------------------------- #
+# Stap 0: Kies vragenlijst
+vragenlijst <- "vas"
+df <- df_vas
+# for VAS data, select outcome variable and create a 'sum' variable
+out_var <- "irritability"
+df <- subset(df_vas, select = c("Castor.Participant.ID","Survey.Package.Name",out_var))
+df$sum <- unlist( df[, which(colnames(df)==out_var)] )
+
+df$Survey.Package.Name <- factor(df$Survey.Package.Name,
+                                 levels = c("Meting 1 vragenlijsten", "Meting 2 vragenlijsten", "Meting 3 vragenlijsten", "Meting 4 vragenlijsten"))
+
 # Stap 1: filter alleen meting 2 en 3
 df_23 <- df %>%
   filter(Survey.Package.Name %in% c("Meting 2 vragenlijsten", "Meting 3 vragenlijsten"))
@@ -314,10 +338,17 @@ showbarplot <- ggplot(sumstats) +
   geom_bar( aes(x=Survey.Package.Name, y=mean), stat="identity", fill="#136497", alpha=0.8) +
   geom_point(aes(x=Survey.Package.Name, y=mean), size=3) +
   geom_errorbar( aes(x=Survey.Package.Name, ymin=mean-sd, ymax=mean+sd), width=0.2, colour="black", alpha=0.9, size=0.3) +
-  ggtitle("Vragenlijst: Vermoeidheid") +
+  ggtitle("Vragenlijst: VAS Prikkelbaar") +
   xlab("Meetmoment") +
   ylab("Gemiddelde somscore") +
   theme(panel.background = element_rect(fill="white",colour="white"), panel.border = element_blank(), panel.grid.major = element_line(colour = "grey"), panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
+
+# Visualisation: ggstats violin plot with t-test
+ggbetweenstats(
+  data = df_3_metingen,
+  x = Survey.Package.Name,
+  y = sum
+)
 
 
 
