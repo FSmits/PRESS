@@ -147,20 +147,136 @@ df_vas <- df_vas %>%
 df_slaapdagboek1 <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Slaapdagboek_1_nacht_export_20250514_clean.csv",show_col_types = FALSE)
 
 df_slaapdagboek1 <- df_slaapdagboek1 %>%
-  mutate(measurement = case_when(Survey.Package.Name == "Meting 1 vragenlijsten" ~ "T0",
-                                 Survey.Package.Name == "Meting 2 vragenlijsten" ~ "T1",
-                                 Survey.Package.Name == "Meting 3 vragenlijsten" ~ "T2",
-                                 Survey.Package.Name == "Meting 4 vragenlijsten" ~ "T3",
-                                 TRUE ~ NA_character_),
-         Castor.ID = Castor.Participant.ID)
+  mutate(
+    measurement = case_when(
+      Survey.Package.Name == "Meting 1 vragenlijsten" ~ "T0",
+      TRUE ~ NA_character_),
+    Castor.ID = Castor.Participant.ID) %>%
+  #replace 999 and 99 with NA
+  mutate(
+    across(c("sleeponset_24h_1","timesawake_24h_1","T0_durationawakening_24h"), 
+           ~ na_if(na_if(., 999), 99) ) )
+
+# Repeat for the 4-day diary but only take the past 24h (last night) because responses of previous nights are mostly missing or guesses
+df_slaapdagboek4 <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Slaapdagboek_4_nachten_export_20250514_clean.csv",show_col_types = FALSE)
+df_slaapdagboek4$sleeponset_24h <- as.numeric(df_slaapdagboek4$sleeponset_24h)
+
+df_slaapdagboek4 <- df_slaapdagboek4 %>%
+  mutate(
+    measurement = case_when(
+      Survey.Package.Name == "Meting 2 vragenlijsten" ~ "T1",
+      Survey.Package.Name == "Meting 3 vragenlijsten" ~ "T2",
+      Survey.Package.Name == "Meting 4 vragenlijsten" ~ "T3",
+      TRUE ~ NA_character_),
+    Castor.ID = Castor.Participant.ID) %>%
+  #replace 999 and 99 with NA
+  mutate(
+    across(c("sleeponset_24h","timesawake_24h","T123_duration_awakening_24h"), 
+           ~ na_if(na_if(., 999), 99) ) )
+
+# Keep only rows where at least one column has a non-NA and non-zero value
+df_slaapdagboek4 <- df_slaapdagboek4 %>%
+  filter(
+    if_any(
+      c(sleeponset_24h, timesawake_24h, T123_duration_awakening_24h),
+      ~ !is.na(.)
+    )
+  )
+
 
 # Calculate total sleep time (TST)
-df_slaapdagboek1$TST <- NA
+tst1 <- df_slaapdagboek1 %>%
+  mutate(
+    # Convert sleep_date to Date (strip time part if it exists)
+    wake_date = as_date(dmy_hms(Survey.Completed.On)),
+    # Parse onset/wake as times, recode to 24h time where necessary
+    sleep_onset_time =  if_else(hour(hms(sleeptime_24h_1)) > 6 & hour(hms(sleeptime_24h_1)) < 12, 
+                                hms(sleeptime_24h_1) + hours(12), 
+                                if_else(hour(hms(sleeptime_24h_1)) == 12, 
+                                        hms(sleeptime_24h_1) - hours(12), 
+                                        hms(sleeptime_24h_1))),
+    diff_awake      = hms(awakeonset_24h_1) - hms(lastawakening_24h_1),
+    wake_onset_time = if_else( abs(hour(diff_awake)) > 0, hms(awakeonset_24h_1), hms(lastawakening_24h_1) ),
+    # Adjust date for after-midnight sleep onset or before-midnight awakening (e.g., 00:30 belongs to the next day)
+    sleep_onset_date = if_else(hour(sleep_onset_time) < 12, wake_date, wake_date-1),
+    wake_onset_date = if_else(hour(wake_onset_time) < 18, wake_date, wake_date-1),
+    # Build full datetimes
+    sleep_onset_dt = sleep_onset_date + seconds(period_to_seconds(sleep_onset_time)),
+    wake_onset_dt  = wake_onset_date + seconds(period_to_seconds(wake_onset_time)),
+    # Calculate total sleep time in minutes
+    total_sleep_minutes = as.numeric(difftime(wake_onset_dt, sleep_onset_dt, units = "mins")) - 
+      replace_na(sleeponset_24h_1,0) - replace_na(T0_durationawakening_24h,0) #when missing (NA), count 0 minutes before sleep onset and 0 minutes awake during
+  ) %>%
+  group_by(Castor.Participant.ID, Survey.Completed.On) %>%
+  summarise(
+    sleep_onset_dt = sleep_onset_dt,
+    wake_onset_dt = wake_onset_dt,
+    total_sleep_minutes = sum(total_sleep_minutes, na.rm = TRUE),
+    total_sleep_hours = total_sleep_minutes / 60,
+    .groups = "drop")
+
+tst4 <- df_slaapdagboek4 %>%
+  mutate(
+    # Convert sleep_date to Date (strip time part if it exists)
+    wake_date = as_date(dmy_hms(Survey.Completed.On)),
+    # Parse onset/wake as times, recode to 24h time where necessary
+    sleep_onset_time =  if_else(hour(hms(sleeptime_24h)) > 6 & hour(hms(sleeptime_24h)) < 12, 
+                                hms(sleeptime_24h) + hours(12), 
+                                if_else(hour(hms(sleeptime_24h)) == 12, 
+                                        hms(sleeptime_24h) - hours(12), 
+                                        hms(sleeptime_24h))),
+    diff_awake      = hms(awakeonset_24h) - hms(lastawakening_24h),
+    wake_onset_time = if_else( abs(hour(diff_awake)) > 0, hms(awakeonset_24h), hms(lastawakening_24h) ),
+    # Adjust date for after-midnight sleep onset or before-midnight awakening (e.g., 00:30 belongs to the next day)
+    sleep_onset_date = if_else(hour(sleep_onset_time) < 12, wake_date, wake_date-1),
+    wake_onset_date = if_else(hour(wake_onset_time) < 18, wake_date, wake_date-1),
+    # Build full datetimes
+    sleep_onset_dt = sleep_onset_date + seconds(period_to_seconds(sleep_onset_time)),
+    wake_onset_dt  = wake_onset_date + seconds(period_to_seconds(wake_onset_time)),
+    # Calculate total sleep time in minutes
+    total_sleep_minutes = as.numeric(difftime(wake_onset_dt, sleep_onset_dt, units = "mins")) - 
+      replace_na(sleeponset_24h, 0) - replace_na(T123_duration_awakening_24h, 0) #when missing (NA), count 0 minutes before sleep onset and 0 minutes awake during
+  ) %>%
+  group_by(Castor.Participant.ID, Survey.Completed.On) %>%
+  summarise(
+    sleep_onset_dt = sleep_onset_dt,
+    wake_onset_dt = wake_onset_dt,
+    total_sleep_minutes = sum(total_sleep_minutes, na.rm = TRUE),
+    total_sleep_hours = total_sleep_minutes / 60,
+    .groups = "drop")
+
+#merge with original diary dataframes and merge diary 1 (T0) with diary4 (T1-T3)
 df_slaapdagboek1 <- df_slaapdagboek1 %>%
-  group_by( c(Castor.Participant.ID, Survey.Completed.On) ) %>%
-  summarise(across(.cols = where(is.numeric), .fns = ~ if (all(is.na(.))) NA else mean(., na.rm = TRUE)), .groups = "drop") %>%
-  
-  
+  full_join(tst1, by = c("Castor.Participant.ID", "Survey.Completed.On"))
+df_slaapdagboek4 <- df_slaapdagboek4 %>%
+  full_join(tst4, by = c("Castor.Participant.ID", "Survey.Completed.On"))
+
+# select subset of variables of interest
+df_sd1_subset <- df_slaapdagboek1 %>% 
+  select(Castor.Participant.ID, Survey.Package.Name, Survey.Completed.On, 
+         date_24h_1, bedtime_24h_1, sleeptime_24h_1, sleeponset_24h_1, timesawake_24h_1, 
+         T0_durationawakening_24h, lastawakening_24h_1, awakeonset_24h_1, sleeprating_24h_1, 
+         countcaffeine_24h_1, lasttimecaffeine_24h_1, cafeine_night_1, countcaffeine_nighht_1, 
+         measurement, Castor.ID, sleep_onset_dt, wake_onset_dt, total_sleep_minutes, 
+         total_sleep_hours)
+#rename to same names as in slaapdagboek4
+colnames(df_sd1_subset) <- c("Castor.Participant.ID", "Survey.Package.Name", "Survey.Completed.On", 
+                             "date_24h", "bedtime_24h", "sleeptime_24h", "sleeponset_24h", "timesawake_24h", 
+                             "T123_duration_awakening_24h", "lastawakening_24h", "awakeonset_24h", "sleeprating_24h", 
+                             "countcaffeine_24h", "lasttimecaffeine_24h", "cafeine_night", "countcaffeine_nighht", 
+                             "measurement", "Castor.ID", "sleep_onset_dt", "wake_onset_dt", "total_sleep_minutes", 
+                             "total_sleep_hours")
+#repeat for slaapdagboek4
+df_sd4_subset <- df_slaapdagboek4 %>% 
+  select(Castor.Participant.ID, Survey.Package.Name, Survey.Completed.On, 
+         date_24h, bedtime_24h, sleeptime_24h, sleeponset_24h, timesawake_24h, 
+         T123_duration_awakening_24h, lastawakening_24h, awakeonset_24h, sleeprating_24h, 
+         countcaffeine_24h, lasttimecaffeine_24h, cafeine_night, countcaffeine_nighht, 
+         measurement, Castor.ID, sleep_onset_dt, wake_onset_dt, total_sleep_minutes, 
+         total_sleep_hours)
+
+# merge by binding
+df_slaapdagboek_all <- rbind(df_sd1_subset,df_sd4_subset)
 
 
 # ------------------------------------------------------------------------------------------------ #
@@ -185,7 +301,7 @@ convert_measurement <- function(df) {
 
 df_pvt <- df_pvt %>%
   select(Castor.ID, measurement, rt_mean) %>%
-  filter(measurement != "T2") #skip T2 due to missing data for almost all participants
+#  filter(measurement != "T1") #skip T1 due to missing data for almost all participants
 
 df_in_slaap_vallen_sum <- convert_measurement(df_in_slaap_vallen) %>%
   rename(sum_slaap = sum)
@@ -206,7 +322,8 @@ df_merged <- df_garmin_avg %>%
   full_join(df_in_slaap_vallen_sum, by = c("Castor.ID", "measurement")) %>%
   full_join(df_spanning_sum, by = c("Castor.ID", "measurement")) %>%
   full_join(df_vermoeidheid_sum, by = c("Castor.ID", "measurement")) %>%
-  full_join(df_vas, by = c("Castor.ID", "measurement"))  
+  full_join(df_vas, by = c("Castor.ID", "measurement"))  %>%
+  full_join(df_slaapdagboek_all, by = c("Castor.ID", "measurement"))  
 
 
 
