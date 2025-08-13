@@ -4,11 +4,14 @@
 #
 # Description:  This script assesses the associations between Garmin, PVT, and questionnaire data.
 #
-# Date:         June 2025
+# Date:         Aug 2025
 # R.version:    4.4.0 (2024-04-24)
 # Rstudio:      2025.05.0+496
 #
 ## ---------------------------------------------------------------------------------------------- ##
+
+# clear environment
+rm(list=ls())
 
 # ------------------------------------------------------------------------------------------------ #
 #                                      Settings & Dependencies
@@ -55,7 +58,9 @@ library(corrplot)
 # ----------------------------------- #
 
 # external volume, change value if necessary 
-setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", sep = ""))
+#setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", sep = ""))
+setwd("/Volumes/heronderzoek/Groep Geuze/25U-0078_PRESS/")
+
 
 # ~/Networkshares/ of ~/Volumes/
 
@@ -69,7 +74,7 @@ setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", se
 
 # Read garmin
 # ----------------------------------- #
-df_garmin <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Garmin/Garmin_data_clean.csv", show_col_types = FALSE)
+df_garmin <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Garmin/Garmin_data_clean2.csv", show_col_types = FALSE)
 
 df_garmin_avg <- df_garmin %>%
   group_by(Castor.ID, measurement) %>%
@@ -101,10 +106,10 @@ df_vermoeidheid <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Cas
 df_vas <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Alertheid_prikkelbaarheid_en_schrikachtigheid_export_20250514_clean.csv", show_col_types = FALSE)
 
 df_vas <- df_vas %>%
-  mutate(measurement = case_when(Survey.Package.Name == "Meting 1 vragenlijsten" ~ "T1",
-                                 Survey.Package.Name == "Meting 2 vragenlijsten" ~ "T2",
-                                 Survey.Package.Name == "Meting 3 vragenlijsten" ~ "T3",
-                                 Survey.Package.Name == "Meting 4 vragenlijsten" ~ "T4",
+  mutate(measurement = case_when(Survey.Package.Name == "Meting 1 vragenlijsten" ~ "T0",
+                                 Survey.Package.Name == "Meting 2 vragenlijsten" ~ "T1",
+                                 Survey.Package.Name == "Meting 3 vragenlijsten" ~ "T2",
+                                 Survey.Package.Name == "Meting 4 vragenlijsten" ~ "T3",
                                  TRUE ~ NA_character_),
          Castor.ID = Castor.Participant.ID)
 
@@ -164,18 +169,18 @@ df_merged <- df_garmin_avg %>%
 #                               Add T2/T3 and delta's
 # ------------------------------------------------------------------------------------------------ #
 
-# Combine T2 and T3 into one measurement
+# Combine T1 and T2 into one measurement
 # -------------------------------------- #
 
-df_t2_t3 <- df_merged %>%
-  filter(measurement %in% c("T2", "T3")) %>%
+df_t1_t2 <- df_merged %>%
+  filter(measurement %in% c("T1", "T2")) %>%
   group_by(Castor.ID) %>%
   summarise(across(.cols = where(is.numeric), .fns = ~ if (all(is.na(.))) NA else mean(., na.rm = TRUE)), .groups = "drop") %>%
-  mutate(measurement = "T2/T3") %>%
+  mutate(measurement = "T1/2") %>%
   select(colnames(df_merged))
 
 # Add to original
-df_merged <- bind_rows(df_merged, df_t2_t3) %>%
+df_merged <- bind_rows(df_merged, df_t1_t2) %>%
   arrange(Castor.ID, measurement) %>%
   mutate(
     # Zet character "NA" en lege strings om in NA voor character-kolommen
@@ -184,7 +189,7 @@ df_merged <- bind_rows(df_merged, df_t2_t3) %>%
     
     # Zet NaN om in NA voor numerieke kolommen
     across(where(is.numeric), ~ ifelse(is.nan(.), NA, .)))
-rm(df_t2_t3)
+rm(df_t1_t2)
 
 
 
@@ -193,7 +198,7 @@ rm(df_t2_t3)
 
 # Step 1: T1 vs T2-T3
 df_diff1 <- df_merged %>%
-  filter(measurement %in% c("T1", "T2/T3")) %>%
+  filter(measurement %in% c("T0", "T1/2")) %>%
   pivot_wider(
     names_from = measurement,
     values_from = c(HRV.Last.Night.Avg...ms., Resting.HR..bpm., Avg.Sleep.min, Nap.Duration.min,
@@ -202,22 +207,22 @@ df_diff1 <- df_merged %>%
     names_sep = "_"
   ) %>%
   mutate(across(
-    ends_with("_T2/T3"),
-    ~ ifelse(is.na(.x) | is.na(get(sub("_T2/T3$", "_T1", cur_column()))), NA_real_, .x - get(sub("_T2/T3$", "_T1", cur_column()))),
-    .names = "{sub('_T2/T3$', '', .col)}"
+    ends_with("_T1/2"),
+    ~ ifelse(is.na(.x) | is.na(get(sub("_T1/2$", "_T1", cur_column()))), NA_real_, .x - get(sub("_T1/2$", "_T0", cur_column()))),
+    .names = "{sub('_T1/2$', '', .col)}"
   )) %>%
   select(Castor.ID, all_of(c(
     "HRV.Last.Night.Avg...ms.", "Resting.HR..bpm.", "Avg.Sleep.min", "Nap.Duration.min",
     "HRV.Last.Night.High..ms.", "Min..Daily.HR..bpm.", "Avg.Sleep.Awake.Dur.min", "Sleep.Score",
     "rt_mean", "sum_slaap", "sum_spanning", "sum_vermoeidheid", "alertness", "irritability", "skittish"
   ))) %>%
-  mutate(measurement = "delta_T1_T2/T3") %>%
+  mutate(measurement = "delta_T0_T1/2") %>%
   select(Castor.ID, measurement, everything())
 
 
-# Step 2: T2-T3 vs T4
+# Step 2: T1-T2 vs T3
 df_diff2 <- df_merged %>%
-  filter(measurement %in% c("T2/T3", "T4")) %>%
+  filter(measurement %in% c("T1/2", "T3")) %>%
   pivot_wider(
     names_from = measurement,
     values_from = c(HRV.Last.Night.Avg...ms., Resting.HR..bpm., Avg.Sleep.min, Nap.Duration.min,
@@ -226,21 +231,21 @@ df_diff2 <- df_merged %>%
     names_sep = "_"
   ) %>%
   mutate(across(
-    ends_with("_T2/T3"),
-    ~ ifelse(is.na(.x) | is.na(get(sub("_T2/T3$", "_T4", cur_column()))), NA_real_, get(sub("_T2/T3$", "_T4", cur_column())) - .x),
-    .names = "{sub('_T2/T3$', '', .col)}"
+    ends_with("_T1/2"),
+    ~ ifelse(is.na(.x) | is.na(get(sub("_T1/2$", "_T3", cur_column()))), NA_real_, get(sub("_T1/2$", "_T3", cur_column())) - .x),
+    .names = "{sub('_T1/2$', '', .col)}"
   )) %>%
   select(Castor.ID, all_of(c(
     "HRV.Last.Night.Avg...ms.", "Resting.HR..bpm.", "Avg.Sleep.min", "Nap.Duration.min",
     "HRV.Last.Night.High..ms.", "Min..Daily.HR..bpm.", "Avg.Sleep.Awake.Dur.min", "Sleep.Score",
     "rt_mean", "sum_slaap", "sum_spanning", "sum_vermoeidheid", "alertness", "irritability", "skittish"
   ))) %>%
-  mutate(measurement = "delta_T2/T3_T4") %>%
+  mutate(measurement = "delta_T1/2_T3") %>%
   select(Castor.ID, measurement, everything())
 
 # Stap 4: Combine
 df_final <- bind_rows(df_merged, df_diff1, df_diff2) %>%
-  arrange(Castor.ID, factor(measurement, levels = c("T1", "T2", "T2/T3", "T3", "T4", "T1_T2/T3", "T2/T3_T4")))
+  arrange(Castor.ID, factor(measurement, levels = c("T0", "T1", "T1/2", "T2", "T3", "T0_T1/2", "T1/2_T3")))
 rm(df_diff1)
 rm(df_diff2)
 
@@ -248,9 +253,9 @@ rm(df_diff2)
 
 
 
-# remove castor ID's 110022, 110028, 110019 omdat koppelcodes nog niet helemaal kloppen
+# remove castor ID's 110019 omdat Garmin data mist
 df_final <- df_final %>%
-  filter(!Castor.ID %in% c(110022, 110028, 110019))
+  filter(!Castor.ID %in% c(110019))
 # save data frame with all variables
 write.csv(df_final,"E_ResearchData/2_ResearchData/1. Verwerkte data/PRESS_all_variables_clean.csv", row.names = FALSE)
 
@@ -264,7 +269,7 @@ write.csv(df_final,"E_ResearchData/2_ResearchData/1. Verwerkte data/PRESS_all_va
 
 # Create correlation matrix
 # ----------------------------------- #
-measurements <- c("T1", "T2", "T3", "T4")
+measurements <- c("T0","T1", "T2", "T3")
 
 for (measurement_point in measurements) {
   
@@ -307,8 +312,8 @@ for (measurement_point in measurements) {
 vars_to_plot <- c("Avg.Sleep.min", "sum_vermoeidheid", "alertness", "irritability", "skittish", "rt_mean")
 
 df_plot <- df_merged %>%
-  filter(measurement %in% c("T1", "T2/T3", "T4")) %>%
-  mutate(measurement = factor(measurement, levels = c("T1", "T2/T3", "T4")))
+  filter(measurement %in% c("T0", "T1/2", "T3")) %>%
+  mutate(measurement = factor(measurement, levels = c("T0", "T1/2", "T3")))
 
 for (varname in vars_to_plot) {
   # Plot met facets per deelnemer
@@ -356,7 +361,7 @@ for (varname in vars_to_plot) {
 # ----------------------------------- #
 
 df_corr <- df_final %>%
-  filter(measurement == "delta_T1_T2/T3") %>%
+  filter(measurement == "delta_T0_T1/2") %>%
   select("Avg.Sleep.min", "sum_vermoeidheid", "alertness", "irritability", "skittish", "rt_mean")
 
 # Compute correlation matrix
@@ -378,14 +383,14 @@ run_models <- function(predictor_var, predictor_name, outcomes, df_final) {
   
   # Data voor delta_T1_T2/T3
   df_delta <- df_final %>%
-    filter(measurement == "delta_T1_T2/T3") %>%
+    filter(measurement == "delta_T0_T1/2") %>%
     select(Castor.ID, !!predictor_name := all_of(predictor_var), all_of(outcomes))
   
   # Data voor T2/T3
   df_T2T3 <- df_final %>%
-    filter(measurement == "T2/T3") %>%
+    filter(measurement == "T1/2") %>%
     select(Castor.ID, all_of(outcomes)) %>%
-    rename_with(~ paste0(.x, "_T2T3"), -Castor.ID)
+    rename_with(~ paste0(.x, "_T1T2"), -Castor.ID)
   
   # Combineer in één dataframe
   df_combined <- df_delta %>%
@@ -403,12 +408,12 @@ run_models <- function(predictor_var, predictor_name, outcomes, df_final) {
              r_squared = summary(model_delta)$r.squared)
     
     # T2/T3
-    outcome_T2T3 <- paste0(outcome, "_T2T3")
+    outcome_T2T3 <- paste0(outcome, "_T1T2")
     f2 <- as.formula(paste0(outcome_T2T3, " ~ ", predictor_name))
     model_T2T3 <- lm(f2, data = df_combined)
     res2 <- tidy(model_T2T3) %>%
       filter(term == predictor_name) %>%
-      mutate(model = "delta_vs_T2T3",
+      mutate(model = "delta_vs_T1T2",
              outcome = outcome,
              r_squared = summary(model_T2T3)$r.squared)
     

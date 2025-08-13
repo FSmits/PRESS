@@ -10,6 +10,8 @@
 #
 ## ---------------------------------------------------------------------------------------------- ##
 
+# clear environment
+rm(list=ls())
 
 # ------------------------------------------------------------------------------------------------ #
 #                                      Settings & Dependencies
@@ -51,7 +53,9 @@ library(ggpubr)
 # ----------------------------------- #
 
 # external volume, change value if necessary 
-setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", sep = ""))
+#setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", sep = ""))
+setwd("/Volumes/heronderzoek/Groep Geuze/25U-0078_PRESS/")
+
 
 # ~/Networkshares/ of ~/Volumes/
 
@@ -125,6 +129,19 @@ df_vas <- df_vas %>%
   dplyr::select("Castor.Participant.ID", "Survey.Package.Name", "alertness", "irritability", "skittish")
 
 write.csv(df_vas,"E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Alertheid_prikkelbaarheid_en_schrikachtigheid_export_20250514_clean.csv", row.names = FALSE)
+
+
+# ----------------------------------- #
+# Slaapdagboek 1 nacht
+# ----------------------------------- #
+df_slaapdagboek1 <- data.frame(read_delim("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Slaapdagboek_1_nacht_export_20250514.csv", delim = ";", show_col_types = FALSE))
+df_slaapdagboek1 <- df_slaapdagboek1 %>%
+  filter(Survey.Progress == 100) %>%
+  dplyr::select("Castor.Participant.ID", "Survey.Package.Name", "Survey.Completed.On",
+                colnames(df_slaapdagboek1[11:ncol(df_slaapdagboek1)])) 
+
+write.csv(df_slaapdagboek1,"E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Slaapdagboek_1_nacht_export_20250514_clean.csv", row.names = FALSE)
+
 
 
 # ------------------------------------------------------------------------------------------------ #

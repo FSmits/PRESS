@@ -10,6 +10,9 @@
 #
 ## ---------------------------------------------------------------------------------------------- ##
 
+# clear environment
+rm(list=ls())
+
 # ------------------------------------------------------------------------------------------------ #
 #                                      Settings & Dependencies
 # ------------------------------------------------------------------------------------------------ #
@@ -50,7 +53,8 @@ library(ggpubr)
 # ----------------------------------- #
 
 # external volume, change value if necessary 
-setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", sep = ""))
+#setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", sep = ""))
+setwd("/Volumes/heronderzoek/Groep Geuze/25U-0078_PRESS/")
 
 # ~/Networkshares/ of ~/Volumes/
 
@@ -91,15 +95,16 @@ df_garmin <- data.frame(df_garmin_raw) %>%
   select(-Code) %>%
   relocate(Castor.ID, .after = 2) %>%
   mutate(measurement = case_when(
-    Date >= as.Date("2025-03-28") & Date <= as.Date("2025-04-06") ~ "T1",
-    Date >= as.Date("2025-04-07") & Date <= as.Date("2025-04-10") ~ "T2",
-    Date == as.Date("2025-04-11")                                   ~ "Hersteldag",
-    Date >= as.Date("2025-04-12") & Date <= as.Date("2025-04-15") ~ "T3",
-    Date >= as.Date("2025-04-16") & Date <= as.Date("2025-04-24") ~ "T4",
+    Date >= as.Date("2025-03-28") & Date <= as.Date("2025-04-06") ~ "T0",
+    Date >= as.Date("2025-04-07") & Date <= as.Date("2025-04-09") ~ "T1",
+    Date == as.Date("2025-04-10")                                 ~ "x - Oefening stilgelegd",
+    Date == as.Date("2025-04-11")                                 ~ "x - Transitiedag",
+    Date >= as.Date("2025-04-12") & Date <= as.Date("2025-04-15") ~ "T2",
+    Date >= as.Date("2025-04-16") & Date <= as.Date("2025-04-24") ~ "T3",
     TRUE ~ NA_character_)) %>%  # add measurement column based on date
   relocate(measurement, .after = 3)
 
-write.csv(df_garmin,"E_ResearchData/2_ResearchData/1. Verwerkte data/Garmin/Garmin_data_clean.csv", row.names = FALSE)
+write.csv(df_garmin,"E_ResearchData/2_ResearchData/1. Verwerkte data/Garmin/Garmin_data_clean2.csv", row.names = FALSE)
 
 # ------------------------------------------------------------------------------------------------ #
 #                             Measurement completion rate
@@ -116,7 +121,7 @@ cols_of_interest <- c("HRV.Last.Night.Avg...ms.",
 
 for (col in cols_of_interest){
   df <- df_garmin %>%
-    select("Castor.ID", "measurement", "Date", col)
+    select("Castor.ID", "measurement", "Date", cols_of_interest[col])
   
   df$Date <- as.Date(df$Date)
   
@@ -125,7 +130,7 @@ for (col in cols_of_interest){
     group_by(Date, measurement) %>%
     summarise(
       total = n(),
-      ingevuld = sum(!is.na(.data[[col]])),
+      ingevuld = sum(!is.na(.data[[cols_of_interest[col]]])),
       completion_pct = ingevuld / total * 100,
       .groups = "drop"
     )
@@ -140,9 +145,9 @@ for (col in cols_of_interest){
     geom_col(position = "dodge") +
     geom_hline(data = avg_completion_df,
                aes(yintercept = avg_completion, color = measurement),
-               linetype = "dashed", linewidth = 1) +
+               linetype = "dashed", linewidth = 0.6) +
     labs(
-      title = paste("Completion percentage for", col),
+      title = paste("Completion percentage for", cols_of_interest[col]),
       subtitle = "Dashed line = average per measurement point",
       x = "Date",
       y = "Completion (%)",
@@ -178,7 +183,7 @@ for (col in cols_of_interest) {
   
   # Set factor levels for measurement
   df_var$measurement <- factor(df_var$measurement,
-                               levels = c("T1", "T2", "Hersteldag", "T3", "T4"))
+                               levels = c("T0","T1", "T2", "T3", "x - Oefening stilgelegd", "x - Transitiedag",))
   
   # Rename column to 'sum'
   df_var <- df_var %>%
