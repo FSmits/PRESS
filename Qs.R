@@ -132,7 +132,7 @@ write.csv(df_vas,"E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_A
 
 
 # ----------------------------------- #
-# Slaapdagboek 1 nacht
+# Slaapdagboek 1 nacht en 4 nachten
 # ----------------------------------- #
 df_slaapdagboek1 <- data.frame(read_delim("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Slaapdagboek_1_nacht_export_20250514.csv", delim = ";", show_col_types = FALSE))
 df_slaapdagboek1 <- df_slaapdagboek1 %>%
@@ -141,6 +141,14 @@ df_slaapdagboek1 <- df_slaapdagboek1 %>%
                 colnames(df_slaapdagboek1[11:ncol(df_slaapdagboek1)])) 
 
 write.csv(df_slaapdagboek1,"E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Slaapdagboek_1_nacht_export_20250514_clean.csv", row.names = FALSE)
+
+df_slaapdagboek4 <- data.frame(read_delim("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Slaapdagboek_4_nachten_export_20250514.csv", delim = ";", show_col_types = FALSE))
+df_slaapdagboek4 <- df_slaapdagboek4 %>%
+  filter(Survey.Progress == 100) %>%
+  dplyr::select("Castor.Participant.ID", "Survey.Package.Name", "Survey.Completed.On",
+                colnames(df_slaapdagboek4[11:ncol(df_slaapdagboek4)])) 
+
+write.csv(df_slaapdagboek4,"E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Slaapdagboek_4_nachten_export_20250514_clean.csv", row.names = FALSE)
 
 
 

@@ -79,11 +79,14 @@ df_garmin <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Garmin/Ga
 df_garmin_avg <- df_garmin %>%
   group_by(Castor.ID, measurement) %>%
   summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
-  filter(measurement != "Hersteldag")
+  filter(measurement != "x - Transitiedag")
 
 # Read PVT
 # ----------------------------------- #
 df_pvt <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/PVT/PVT_readouts.csv", show_col_types = FALSE)
+
+#change one entered non-existing PVT-ID at T2 (206), most likely is a typo for 906:
+df_pvt$PVTid[which(df_pvt$PVTid==206)] <- 906
 
 df_codelist <- data.frame(read_excel("C_PersonalData/2_CodeList/Sleutelbestand_PRESS.xlsx"))  %>%
   select("Castor.ID", "PVT.ID")  %>%
@@ -92,18 +95,43 @@ df_codelist <- data.frame(read_excel("C_PersonalData/2_CodeList/Sleutelbestand_P
 df_pvt <- full_join(df_pvt, df_codelist, by = c("PVTid" = "PVT.ID"))
 
 df_pvt <- df_pvt %>%
-  mutate(measurement = case_when(timepoint == "M1" ~ "T1",
-                                 timepoint == "M2" ~ "T2",
-                                 timepoint == "M3" ~ "T3",
-                                 timepoint == "M4" ~ "T4",
+  mutate(measurement = case_when(timepoint == "M1" ~ "T0",
+                                 timepoint == "M2" ~ "T1",
+                                 timepoint == "M3" ~ "T2",
+                                 timepoint == "M4" ~ "T3",
                                  TRUE ~ NA_character_))
+
 
 # Read questionnaires
 # ----------------------------------- #
 df_in_slaap_vallen <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_In_slaap_vallen_export_20250514_clean.csv", show_col_types = FALSE)
-df_spanning <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Spanning_export_20250514_clean.csv", show_col_types = FALSE)
-df_vermoeidheid <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Vermoeidheid_export_20250514_clean.csv", show_col_types = FALSE)
-df_vas <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Alertheid_prikkelbaarheid_en_schrikachtigheid_export_20250514_clean.csv", show_col_types = FALSE)
+df_spanning        <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Spanning_export_20250514_clean.csv", show_col_types = FALSE)
+df_vermoeidheid    <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Vermoeidheid_export_20250514_clean.csv", show_col_types = FALSE)
+df_vas             <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Alertheid_prikkelbaarheid_en_schrikachtigheid_export_20250514_clean.csv", show_col_types = FALSE)
+
+df_in_slaap_vallen <- df_in_slaap_vallen %>%
+  mutate(measurement = case_when(Survey.Package.Name == "Meting 1 vragenlijsten" ~ "T0",
+                                 Survey.Package.Name == "Meting 2 vragenlijsten" ~ "T1",
+                                 Survey.Package.Name == "Meting 3 vragenlijsten" ~ "T2",
+                                 Survey.Package.Name == "Meting 4 vragenlijsten" ~ "T3",
+                                 TRUE ~ NA_character_),
+         Castor.ID = Castor.Participant.ID)
+
+df_spanning <- df_spanning %>%
+  mutate(measurement = case_when(Survey.Package.Name == "Meting 1 vragenlijsten" ~ "T0",
+                                 Survey.Package.Name == "Meting 2 vragenlijsten" ~ "T1",
+                                 Survey.Package.Name == "Meting 3 vragenlijsten" ~ "T2",
+                                 Survey.Package.Name == "Meting 4 vragenlijsten" ~ "T3",
+                                 TRUE ~ NA_character_),
+         Castor.ID = Castor.Participant.ID)
+
+df_vermoeidheid <- df_vermoeidheid %>%
+  mutate(measurement = case_when(Survey.Package.Name == "Meting 1 vragenlijsten" ~ "T0",
+                                 Survey.Package.Name == "Meting 2 vragenlijsten" ~ "T1",
+                                 Survey.Package.Name == "Meting 3 vragenlijsten" ~ "T2",
+                                 Survey.Package.Name == "Meting 4 vragenlijsten" ~ "T3",
+                                 TRUE ~ NA_character_),
+         Castor.ID = Castor.Participant.ID)
 
 df_vas <- df_vas %>%
   mutate(measurement = case_when(Survey.Package.Name == "Meting 1 vragenlijsten" ~ "T0",
@@ -114,7 +142,25 @@ df_vas <- df_vas %>%
          Castor.ID = Castor.Participant.ID)
 
 
+# Read sleep diary
+# ----------------------------------- #
+df_slaapdagboek1 <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Slaapdagboek_1_nacht_export_20250514_clean.csv",show_col_types = FALSE)
 
+df_slaapdagboek1 <- df_slaapdagboek1 %>%
+  mutate(measurement = case_when(Survey.Package.Name == "Meting 1 vragenlijsten" ~ "T0",
+                                 Survey.Package.Name == "Meting 2 vragenlijsten" ~ "T1",
+                                 Survey.Package.Name == "Meting 3 vragenlijsten" ~ "T2",
+                                 Survey.Package.Name == "Meting 4 vragenlijsten" ~ "T3",
+                                 TRUE ~ NA_character_),
+         Castor.ID = Castor.Participant.ID)
+
+# Calculate total sleep time (TST)
+df_slaapdagboek1$TST <- NA
+df_slaapdagboek1 <- df_slaapdagboek1 %>%
+  group_by( c(Castor.Participant.ID, Survey.Completed.On) ) %>%
+  summarise(across(.cols = where(is.numeric), .fns = ~ if (all(is.na(.))) NA else mean(., na.rm = TRUE)), .groups = "drop") %>%
+  
+  
 
 
 # ------------------------------------------------------------------------------------------------ #
