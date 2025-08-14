@@ -59,7 +59,7 @@ library(corrplot)
 
 # external volume, change value if necessary 
 #setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", sep = ""))
-setwd("/Volumes/heronderzoek/Groep Geuze/25U-0078_PRESS/")
+setwd("/Volumes/Onderzoek/Groep Geuze/25U-0078_PRESS/")
 
 
 # ~/Networkshares/ of ~/Volumes/
@@ -71,6 +71,21 @@ setwd("/Volumes/heronderzoek/Groep Geuze/25U-0078_PRESS/")
 # ------------------------------------------------------------------------------------------------ #
 #                                   Data Collection and preparation
 # ------------------------------------------------------------------------------------------------ #
+
+# Read demography
+# ----------------------------------- #
+df_CRF <- read_delim("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_export_20250514_copy.csv", 
+                      delim = ";", quote = "\"", show_col_types = FALSE)
+# recode -99 to NA
+df_CRF <- df_CRF %>%
+  mutate(
+    across(where(is.numeric), ~ na_if(., -99)),
+    across(where(is.character), ~ na_if(., "-99"))
+  )
+
+df_demo <- subset(df_CRF, select = c("Participant Id", "rank"))
+colnames(df_demo) <- c("Castor.ID", "rank")
+         
 
 # Read garmin
 # ----------------------------------- #
@@ -183,12 +198,23 @@ df_slaapdagboek4 <- df_slaapdagboek4 %>%
     )
   )
 
+# Change Survey Completed On dates where paper-and-pencil was used (T1/M2): use the date_24h
+df_slaapdagboek1 <- df_slaapdagboek1 %>%
+  mutate(
+    Survey.Completed.On = as_datetime( dmy_hms(Survey.Completed.On)  ) )
+
+df_slaapdagboek4 <- df_slaapdagboek4 %>%
+  mutate(
+    Survey.Completed.On = as_datetime( ifelse( month(dmy_hms(Survey.Completed.On)) == 5,
+                                               dmy_hms(paste(date_24h,"14:14:14",sep=" ") ),
+                                               dmy_hms(Survey.Completed.On) ) ) )
+    
 
 # Calculate total sleep time (TST)
 tst1 <- df_slaapdagboek1 %>%
   mutate(
     # Convert sleep_date to Date (strip time part if it exists)
-    wake_date = as_date(dmy_hms(Survey.Completed.On)),
+    wake_date = as_date(Survey.Completed.On),
     # Parse onset/wake as times, recode to 24h time where necessary
     sleep_onset_time =  if_else(hour(hms(sleeptime_24h_1)) > 6 & hour(hms(sleeptime_24h_1)) < 12, 
                                 hms(sleeptime_24h_1) + hours(12), 
@@ -217,8 +243,8 @@ tst1 <- df_slaapdagboek1 %>%
 
 tst4 <- df_slaapdagboek4 %>%
   mutate(
-    # Convert sleep_date to Date (strip time part if it exists)
-    wake_date = as_date(dmy_hms(Survey.Completed.On)),
+    # Convert sleep_date to Date (strip time part if it exists) 
+    wake_date = as_date(Survey.Completed.On),
     # Parse onset/wake as times, recode to 24h time where necessary
     sleep_onset_time =  if_else(hour(hms(sleeptime_24h)) > 6 & hour(hms(sleeptime_24h)) < 12, 
                                 hms(sleeptime_24h) + hours(12), 
@@ -239,6 +265,7 @@ tst4 <- df_slaapdagboek4 %>%
   ) %>%
   group_by(Castor.Participant.ID, Survey.Completed.On) %>%
   summarise(
+    wake_date = wake_date,
     sleep_onset_dt = sleep_onset_dt,
     wake_onset_dt = wake_onset_dt,
     total_sleep_minutes = sum(total_sleep_minutes, na.rm = TRUE),
@@ -278,6 +305,12 @@ df_sd4_subset <- df_slaapdagboek4 %>%
 # merge by binding
 df_slaapdagboek_all <- rbind(df_sd1_subset,df_sd4_subset)
 
+# get average by measurement
+df_slaapdagboek_avg <- df_slaapdagboek_all %>%
+  group_by(Castor.ID, measurement) %>%
+  summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE)), .groups = "drop")
+
+
 
 # ------------------------------------------------------------------------------------------------ #
 #                                          Merge data frames
@@ -300,8 +333,8 @@ convert_measurement <- function(df) {
 }
 
 df_pvt <- df_pvt %>%
-  select(Castor.ID, measurement, rt_mean) %>%
-#  filter(measurement != "T1") #skip T1 due to missing data for almost all participants
+  select(Castor.ID, measurement, rt_mean, rt_sd) %>%
+  filter(measurement != "T1") #skip T1 (M2) due to missing data for almost all participants
 
 df_in_slaap_vallen_sum <- convert_measurement(df_in_slaap_vallen) %>%
   rename(sum_slaap = sum)
@@ -312,19 +345,72 @@ df_spanning_sum <- convert_measurement(df_spanning) %>%
 df_vermoeidheid_sum <- convert_measurement(df_vermoeidheid) %>%
   rename(sum_vermoeidheid = sum)
 
+df_slaapdagboek <- df_slaapdagboek_all %>%
+  select(Castor.ID, measurement, total_sleep_minutes, T123_duration_awakening_24h)
+
 df_vas <- df_vas %>%
   select("Castor.ID", "measurement", "alertness", "irritability", "skittish")
   
+df_garmin$measurement[df_garmin$measurement=="x - Oefening stilgelegd"] <- "T1"
+df_garmin_avg$measurement[df_garmin_avg$measurement=="x - Oefening stilgelegd"] <- "T1"
 
-# Merge all with df_garmin_avg
+# Merge all Qs with df_garmin_avg and slaapdagboek_avg
 df_merged <- df_garmin_avg %>%
+  full_join(df_demo, by = "Castor.ID") %>%
   full_join(df_pvt, by = c("Castor.ID", "measurement")) %>%
   full_join(df_in_slaap_vallen_sum, by = c("Castor.ID", "measurement")) %>%
   full_join(df_spanning_sum, by = c("Castor.ID", "measurement")) %>%
   full_join(df_vermoeidheid_sum, by = c("Castor.ID", "measurement")) %>%
-  full_join(df_vas, by = c("Castor.ID", "measurement"))  %>%
-  full_join(df_slaapdagboek_all, by = c("Castor.ID", "measurement"))  
+  full_join(df_vas, by = c("Castor.ID", "measurement")) %>%
+  full_join(df_slaapdagboek, by = c("Castor.ID", "measurement"))  
 
+# Merge sleep diary with df_garmin
+#df_slaapdagboek_all$Survey.Completed.On <- as.Date(dmy_hms(df_slaapdagboek_all$Survey.Completed.On))
+df_slaapdagboek_all$Date <- as_date(ymd_hms(df_slaapdagboek_all$Survey.Completed.On))
+df_garmin$Date <- as_date(df_garmin$Date )
+df_sleep <- df_garmin %>%
+  full_join(df_slaapdagboek_all, by = c("Castor.ID", "measurement","Date"))  
+
+# Find difference in total sleep time between Garmin and Sleep diary
+df_sleep$Avg.Sleep_Nap.min <- df_sleep$Avg.Sleep.min + 
+  if_else(!is.na(df_sleep$Nap.Duration.min), df_sleep$Nap.Duration.min, 0)
+
+garmin_diary_diff <- df_sleep %>%
+  rowwise() %>%
+  mutate(diff = if_all(c(Avg.Sleep_Nap.min, total_sleep_minutes), ~ !is.na(.)) * (Avg.Sleep_Nap.min - total_sleep_minutes)) %>%
+  ungroup()
+ 
+# plot the difference
+garmin_diary_diff <- garmin_diary_diff %>%
+  mutate(outcome_cat = case_when(
+    is.na(diff)   ~ "missing",
+    diff < -30    ~ "Garmin TST lager dan slaapdagboek TST (>30 min. verschil)",
+    diff > 30     ~ "Garmin TST hoger dan slaapdagboek TST (>30 min. verschil)",
+    diff > -29 & diff < 29 ~ "Garmin TST ~ slaapdagboek TST (<30 min. verschil)"))
+
+plotdiff <- subset(garmin_diary_diff, Date == "2025-03-27" | Date == "2025-04-10" | Date == "2025-04-15" | Date == "2025-04-24" )
+
+# Calculate percentages per Date + outcome_cat
+plotdiff_perc <- plotdiff %>%
+  group_by(measurement, outcome_cat) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(measurement) %>%
+  mutate(perc = count / sum(count))
+
+ggplot(plotdiff_perc, aes(x = measurement, y = perc, fill = outcome_cat)) +
+  geom_col() +
+  geom_text(aes(label = scales::percent(perc, accuracy = 1)), 
+            position = position_stack(vjust = 0.5), color = "white", size = 3) +
+  labs(x = "Meetmoment", y = "Percentage", fill = "Verschil in totale slaaptijd (TST)") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(values = c("darkgreen", "darkorange", "purple", "lightgrey")) +
+  theme_minimal()
+
+ggplot(plotdiff[!is.na(plotdiff$diff), ], aes(x = measurement, y = diff, color = outcome_cat)) +
+  geom_jitter(size = 3, width = 0.1, alpha = 0.7) +
+  labs(x = "Meetmoment", y = "Verschil in minuten (Garmin TST - slaapdagboek TST)") +
+  scale_color_manual(values = c("darkgreen", "darkorange", "purple", "lightgrey")) +
+  theme_minimal()
 
 
 
@@ -334,13 +420,18 @@ df_merged <- df_garmin_avg %>%
 
 # Combine T1 and T2 into one measurement
 # -------------------------------------- #
-
 df_t1_t2 <- df_merged %>%
   filter(measurement %in% c("T1", "T2")) %>%
   group_by(Castor.ID) %>%
-  summarise(across(.cols = where(is.numeric), .fns = ~ if (all(is.na(.))) NA else mean(., na.rm = TRUE)), .groups = "drop") %>%
+  summarise(across(
+    .cols = where(is.numeric),
+    .fns  = ~ {
+      m <- mean(., na.rm = TRUE)
+      if (is.nan(m)) NA_real_ else m
+    }
+  ), .groups = "drop") %>%
   mutate(measurement = "T1/2") %>%
-  select(colnames(df_merged))
+  select(all_of(colnames(df_merged)))
 
 # Add to original
 df_merged <- bind_rows(df_merged, df_t1_t2) %>%
@@ -364,21 +455,22 @@ df_diff1 <- df_merged %>%
   filter(measurement %in% c("T0", "T1/2")) %>%
   pivot_wider(
     names_from = measurement,
-    values_from = c(HRV.Last.Night.Avg...ms., Resting.HR..bpm., Avg.Sleep.min, Nap.Duration.min,
-                    HRV.Last.Night.High..ms., Min..Daily.HR..bpm., Avg.Sleep.Awake.Dur.min, Sleep.Score,
-                    rt_mean, sum_slaap, sum_spanning, sum_vermoeidheid, alertness, irritability, skittish),
+    values_from = c(HRV.Last.Night.Avg...ms., Avg.Sleep.min, Avg.Sleep.Awake.Dur.min, 
+                    Sleep.Score, rt_mean, rt_sd, sum_slaap, sum_spanning, sum_vermoeidheid, 
+                    alertness, irritability, skittish, total_sleep_minutes, T123_duration_awakening_24h),
     names_sep = "_"
   ) %>%
   mutate(across(
     ends_with("_T1/2"),
-    ~ ifelse(is.na(.x) | is.na(get(sub("_T1/2$", "_T1", cur_column()))), NA_real_, .x - get(sub("_T1/2$", "_T0", cur_column()))),
+    ~ ifelse(is.na(.x) | is.na(get(sub("_T1/2$", "_T0", cur_column()))), NA_real_, .x - get(sub("_T1/2$", "_T0", cur_column()))),
     .names = "{sub('_T1/2$', '', .col)}"
   )) %>%
-  select(Castor.ID, all_of(c(
-    "HRV.Last.Night.Avg...ms.", "Resting.HR..bpm.", "Avg.Sleep.min", "Nap.Duration.min",
-    "HRV.Last.Night.High..ms.", "Min..Daily.HR..bpm.", "Avg.Sleep.Awake.Dur.min", "Sleep.Score",
-    "rt_mean", "sum_slaap", "sum_spanning", "sum_vermoeidheid", "alertness", "irritability", "skittish"
-  ))) %>%
+  select(Castor.ID, all_of(c("HRV.Last.Night.Avg...ms.", "Avg.Sleep.min", 
+                             "Avg.Sleep.Awake.Dur.min", "Sleep.Score", 
+                             "rt_mean", "rt_sd", "sum_slaap", 
+                             "sum_spanning", "sum_vermoeidheid", 
+                             "alertness", "irritability", "skittish", 
+                             "total_sleep_minutes","T123_duration_awakening_24h"))) %>%
   mutate(measurement = "delta_T0_T1/2") %>%
   select(Castor.ID, measurement, everything())
 
@@ -472,48 +564,87 @@ for (measurement_point in measurements) {
 # ------------------------------------------------------------------------------------------------ #
 
 # Vars to plot
-vars_to_plot <- c("Avg.Sleep.min", "sum_vermoeidheid", "alertness", "irritability", "skittish", "rt_mean")
+vars_to_plot <- c("HRV.Last.Night.Avg...ms.","Avg.Sleep.min", "sum_vermoeidheid", 
+                  "sum_slaap", "sum_spanning", "alertness", "irritability", "skittish", 
+                  "rt_mean", "rt_sd","total_sleep_minutes", "T123_duration_awakening_24h")
 
 df_plot <- df_merged %>%
   filter(measurement %in% c("T0", "T1/2", "T3")) %>%
-  mutate(measurement = factor(measurement, levels = c("T0", "T1/2", "T3")))
-
+  mutate(
+    measurement = factor(measurement, levels = c("T0", "T1/2", "T3")),
+    sleep_cat = case_when(
+      total_sleep_minutes < 300  ~ "Slaap: minder dan 5h",
+      Avg.Sleep.min < 300        ~ "Slaap: minder dan 5h",
+      total_sleep_minutes >= 300 ~ "Slaap: meer dan 5h",
+      Avg.Sleep.min >= 300       ~ "Slaap: meer dan 5h",
+      TRUE ~ NA_character_
+    ),
+    rank_cat = case_when(
+      rank > 1  ~ "(onder)officier",
+      rank == 1 ~ "manschap",
+      is.na(rank) ~ "manschap",
+      TRUE ~ NA_character_
+    )
+  )
+varname <-   "alertness"  "irritability", "skittish", 
+"rt_mean", "rt_sd","total_sleep_minutes", "T123_duration_awakening_24h"
+  
 for (varname in vars_to_plot) {
-  # Plot met facets per deelnemer
-  p_facet <- ggplot(df_plot, aes(x = measurement, y = .data[[varname]], group = Castor.ID)) +
-    geom_line(alpha = 0.7) +
-    geom_point(alpha = 0.7) +
-    facet_wrap(~ Castor.ID, scales = "free_y") +
+  # # Plot met facets per deelnemer
+  # p_facet <- ggplot(df_plot, aes(x = measurement, y = .data[[varname]], group = Castor.ID)) +
+  #   geom_line(alpha = 0.7) +
+  #   geom_point(alpha = 0.7) +
+  #   facet_wrap(~ Castor.ID, scales = "free_y") +
+  #   labs(
+  #     title = paste("Verloop van", varname, "per deelnemer (facets)"),
+  #     x = "Measurement",
+  #     y = varname
+  #   ) +
+  #   theme_minimal() +
+  #   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  # 
+  # fileName <- paste0("verloop_", varname, ".svg")
+  # ggsave(paste0("F_DataAnalysis/1f_DataAnalysisScripts/Outcomes Xandra/", fileName),
+  #        plot = p_facet, width = 260, height = 200, units = "mm")
+  
+  # Plot met alle deelnemers in 1 figuur zonder facets
+  p_all_sleep <- ggplot(df_plot, aes(x = measurement, y = .data[[varname]], group = Castor.ID, color = factor(sleep_cat))) +
+    geom_line(alpha = 0.7, color="black", linewidth=0.2) +
+    geom_point(alpha = 0.7, size = 3) +
     labs(
-      title = paste("Verloop van", varname, "per deelnemer (facets)"),
-      x = "Measurement",
-      y = varname
+      title = "Color split: Slaapduur",
+      x = "Meetmoment",
+      y = varname,
+      color = "Slaap"
     ) +
+    scale_color_manual(values = c("darkgreen", "darkorange", "lightgrey")) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
   
-  fileName <- paste0("verloop_", varname, ".svg")
-  ggsave(paste0("F_DataAnalysis/1f_DataAnalysisScripts/Outcomes Xandra/", fileName),
-         plot = p_facet, width = 260, height = 200, units = "mm")
-  
-  # Plot met alle deelnemers in 1 figuur zonder facets
-  p_all <- ggplot(df_plot, aes(x = measurement, y = .data[[varname]], group = Castor.ID, color = factor(Castor.ID))) +
-    geom_line(alpha = 0.7) +
-    geom_point(alpha = 0.7) +
+  p_all_rank <- ggplot(df_plot, aes(x = measurement, y = .data[[varname]], group = Castor.ID, color = factor(rank_cat))) +
+    geom_line(alpha = 0.7, color="black", linewidth=0.2) +
+    geom_point(alpha = 0.7, size = 3) +
     labs(
-      title = paste("Verloop van", varname, "voor alle deelnemers"),
-      x = "Measurement",
+      title = "Color split: Rang (categorie)",
+      x = "Meetmoment",
       y = varname,
-      color = "Deelnemer"
+      color = "Rang_categorie"
     ) +
+    scale_color_manual(values = c( "brown", "darkblue")) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
   
   fileName <- paste0("verloop_alleDeelnemers", varname, ".svg")
   ggsave(paste0("F_DataAnalysis/1f_DataAnalysisScripts/Outcomes Xandra/", fileName),
-         plot = p_all, width = 260, height = 200, units = "mm")
+         plot = p_all_sleep, width = 260, height = 200, units = "mm")
+  ggsave(paste0("F_DataAnalysis/1f_DataAnalysisScripts/Outcomes Xandra/", fileName),
+         plot = p_all_rank, width = 260, height = 200, units = "mm")
+  
 }
 
+
+ggplot(df_plot, aes(x = measurement, y = Avg.Sleep.min, group = Castor.ID, color = factor(sleep_cat))) +
+  geom_jitter()
 
 # ------------------------------------------------------------------------------------------------ #
 #                                   Assessment of associations
