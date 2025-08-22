@@ -6,9 +6,9 @@
 %             - Study name: PRESS (dossiernr.: 25U-0078)
 %             - Measure/instrument: Muse S Headband recordings
 %             - Data type: EEG time series with trigger events (time stamps)
-%             - Design: within-subjects longitudinal, 3 timepoints (M1: 27th 03/'25, M2: 10th and 11th 04/'25, M3: N/A (no EEG data recorded), M4: 24th 04/'25)
+%             - Design: within-subjects longitudinal, 3 timepoints (T0 ("M1:") 27th 03/'25, T1 ("M2"): 10th and 11th 04/'25, T1 ("M4"): 24th 04/'25)
 %
-% Date:             July 2025
+% Date:             July 2025, update Aug 2025
 % Matlab version:   2024b
 %
 % --------------------------------------------------------------------- %
@@ -23,20 +23,28 @@ close all
 % initialize eeglab in nogui mode (no GUI opens, all initializes synchronously)
 cd('/Users/fsmits2/Downloads/eeglab2024.2')
 [ALLEEG, EEG, CURRENTSET, ALLCOM] = eeglab('nogui');
-% NOTE: If EEGlab is started with GUI, do not continue before eeglab is fully started >> code will nut run because EEGlab function start ups may still run asynchronously [in the background]
+% NOTE: If EEGlab is started with GUI, do not continue before eeglab is fully started >> code will not run because EEGlab function start ups may still run asynchronously [in the background]
 
 
 %% Set paths and subject IDs
 
-% set paths to data
-Path2EEGsets = '/Volumes/heronderzoek-1/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/1. Verwerkte data/Muse/EEGLAB sets with markers/';
-path2save    = '/Volumes/heronderzoek-1/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/1. Verwerkte data/Muse/';
-path2scripts = '/Volumes/heronderzoek-1/Groep Geuze/25U-0078_PRESS/F_DataAnalysis/1f_DataAnalysisScripts/';
+% find path name to research folder structure (RFS)
+path2RFS = '/Volumes/Onderzoek-2/Groep Geuze/25U-0078_PRESS/';
+
+% set other paths 
+path2data    = [path2RFS 'E_ResearchData/2_ResearchData/'];
+path2EEGsets = [path2data '1. Verwerkte data/Muse/EEGLAB sets with markers/'];
+path2save    = [path2data '1. Verwerkte data/Muse/'];
+%%%path2scripts = [path2RFS 'F_DataAnalysis/1f_DataAnalysisScripts/';
 
 % enter subject names
-subj_tab  = readtable('/Volumes/heronderzoek-1/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/SubjectID_koppelbestand_Castor-PVT-Garmin.csv', 'ReadVariableNames', 1);
-subj_list = table2array( subj_tab(:,1) );
-sessions  = ['M1'; 'M2'; 'M4'];
+key_filename = [path2data 'SubjectID_koppelbestand_Castor-PVT-Garmin.csv'];
+subj_tab     = readtable( key_filename, 'ReadVariableNames', 1);
+subj_list    = table2array( subj_tab(:,1) );
+
+% enter session and experimental task names
+sessions = ['M1'; 'M2'; 'M4'];
+tasks    = ['rust'; 'startle'];
 
 
 
@@ -48,7 +56,7 @@ sessions  = ['M1'; 'M2'; 'M4'];
 filename = 'sub-110027_ses-M1-rust_task-Default_run-001_eeg.xdf.set';
 
 % load the EEGset
-EEG = pop_loadset('filename',filename,'filepath',Path2EEGsets);
+EEG = pop_loadset('filename',filename,'filepath',path2EEGsets);
 
 % rename trigger events
 for condition = ["open", "close", "end"]
@@ -122,15 +130,15 @@ rej_epocs     = [subj_list  nan(length(subj_list),length(sessions)*2)];
 bdchns        = cell(length(subj_list),3);
 bdchns(:,1)   = num2cell(subj_list');
 
-rej_epocs     = table2array( readtable( [Path2EEGsets '/Overview_rejected_epochs_' file_type{fileno} '16-Jun-2023' '.txt'] ) ); %char(datetime('today'))
-bdchns        = table2cell(  readtable( [Path2EEGsets '/Overview_badchannels_'     file_type{fileno} '16-Jun-2023' '.txt'] ) ); %,'Format','auto') );
+rej_epocs     = table2array( readtable( [path2EEGsets '/Overview_rejected_epochs_' file_type{fileno} '16-Jun-2023' '.txt'] ) ); %char(datetime('today'))
+bdchns        = table2cell(  readtable( [path2EEGsets '/Overview_badchannels_'     file_type{fileno} '16-Jun-2023' '.txt'] ) ); %,'Format','auto') );
 
 % 2) Loop over files
 for subj_i = 1:length(subj_list)
     for sess_i = 1:length(sessions)
 
         % Load EEG set
-        EEG      = pop_loadset('filename', fileName , 'filepath', Path2EEGsets);
+        EEG      = pop_loadset('filename', fileName , 'filepath', path2EEGsets);
 
         % Find channels with high standard deviation to detect noisy channels
         pop_eegplot( EEG, 1, 1, 1);
@@ -240,7 +248,7 @@ for subj_i = 1:length(subj_list)
         % Save
         fprintf('\n****\nSave clean data subject %i session %i\n****\n\n', subj_list(subj_i), sessions(sess_i));
         SaveName = [filename '_CleanEEG.set'];
-        EEG      = pop_saveset( EEG, 'filename',SaveName,'filepath', Path2EEGsets );
+        EEG      = pop_saveset( EEG, 'filename',SaveName,'filepath', path2EEGsets );
         cd(path2save);
         writecell(  bdchns,     [path2save '/Overview_badchannels_'     'PRESS_restEEG' char(datetime('today')) '.txt'], 'Delimiter',',');
         writematrix(rej_epocs,  [path2save '/Overview_rejected_epochs_' 'PRESS_restEEG' char(datetime('today')) '.txt'], 'Delimiter',',');
