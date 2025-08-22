@@ -18,6 +18,7 @@
 clear
 close all
 
+
 %% Initialize
 
 % initialize eeglab in nogui mode (no GUI opens, all initializes synchronously)
@@ -37,89 +38,193 @@ path2EEGsets = [path2data '1. Verwerkte data/Muse/EEGLAB sets with markers/'];
 path2save    = [path2data '1. Verwerkte data/Muse/'];
 %%%path2scripts = [path2RFS 'F_DataAnalysis/1f_DataAnalysisScripts/';
 
-% enter subject names
+% enter subject names (extract from key file where subject IDs are linked)
 key_filename = [path2data 'SubjectID_koppelbestand_Castor-PVT-Garmin.csv'];
 subj_tab     = readtable( key_filename, 'ReadVariableNames', 1);
 subj_list    = table2array( subj_tab(:,1) );
 
 % enter session and experimental task names
-sessions = ['M1'; 'M2'; 'M4'];
-tasks    = ['rust'; 'startle'];
+sessions = {'M1', 'M2', 'M4'};
+tasks    = {'rust', 'startle'};
 
 
+%% Load data, filter and epoch
 
-%% Load data & visual inspection
-
-% ! rewrite to loop over all subjects, all sessions, all measurements (rest-EEG and startle paradigm)
-
-% filename
-filename = 'sub-110027_ses-M1-rust_task-Default_run-001_eeg.xdf.set';
-
-% load the EEGset
-EEG = pop_loadset('filename',filename,'filepath',path2EEGsets);
-
-% rename trigger events
-for condition = ["open", "close", "end"]
-    idx = find(~cellfun('isempty', strfind({EEG.event.type}, condition)));
-    [EEG.event(idx).type] = deal(char(condition));
-end
-
-% View EEG set characteristics
-disp(EEG);
-
-% inspect data
-pop_eegplot( EEG, 1, 1, 1);
-
-
-%% Filter & epoch the data
 % Note: 
 % No re-referencing possible due to lack of reference electrode;
-% No downsampling not needed due to low sampling rate);
+% No downsampling not needed due to low sampling rate;
 % No ICA possible due to low number of channels
 
-% Filter between 1-30 Hz
-EEG = pop_eegfiltnew(EEG, 'locutoff',1,'hicutoff',30);
+% % example filename
+% filename = 'sub-110027_ses-M1-rust_task-Default_run-001_eeg.xdf.set'; 
+
+% Loop over subjects, sessions and tasks (rest and startle)
+for subj_i = 1:length(subj_list)
+    for sess_i = 1:length(sessions)
+        for task_i = 1:length(tasks)
+
+            fprintf('\n****\nStart processing subject %i session %s %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
+            filename = sprintf('sub-%i_ses-%s-%s_task-Default_run-001_eeg.xdf.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
+
+            % -- Check if file exists --
+            fullPath = fullfile(path2EEGsets, filename);
+            if ~exist(fullPath, 'file')
+                fprintf('File %s not found. Skipping.\n', fullPath);
+                continue;  % skip to next iteration of your subject/session/task loop
+            end
 
 
-% Add event after each 1-second into eyes-open or eyes-closed condition 
-% 1) find event latencies of start
-open_begin  = sort(find(strcmpi( {EEG.event.type}, 'open' ))); %Find the open/closed eyes onset triggers
-close_begin = sort(find(strcmpi( {EEG.event.type}, 'close' )));
+            % -- Load raw EEG set --
+            EEG      = pop_loadset('filename',filename,'filepath',path2EEGsets);
 
-% eyes open: find start latencies
-for i = 1:length(open_begin)
-    open_period(i,1) = EEG.event(open_begin(i)).latency;
-    open_period(i,2) = EEG.event(open_begin(i)).latency + 60*EEG.srate;
-end
-% eyes closed: find start latencies
-for i = 1:length(close_begin)
-    close_period(i,1) = EEG.event(close_begin(i)).latency;
-    close_period(i,2) = EEG.event(close_begin(i)).latency + 60*EEG.srate;
-end
 
-% eyes open: insert events
-for i = 1:length(open_begin)
-    trggLats = open_period(i,1):EEG.srate:(open_period(i,2)-1*EEG.srate);
-    for segi = 1:length(trggLats)
-        EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
-            'changefield',{ segi ,'type',    'open' },...
-            'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
+            % % -- * if needed: View set characteristics or plot for visual inspection
+            % disp(EEG);
+            % pop_eegplot( EEG, 1, 1, 1); % Inspect data
+
+
+            % -- Add info to EEG structure --
+            EEG.filename = filename;
+            EEG.setname  = filename;
+            EEG.subject  = subj_list(subj_i);
+            EEG.session  = sess_i;
+
+
+            % -- Rename trigger events --
+            % 0) Rename 'habituation_probe' (startle task) to 'habituation' to avoid matching 'probe'
+            if strcmp(tasks{task_i}, 'startle') %this only needed for startle task
+                hab_idx = find(contains({EEG.event.type}, 'habituation_probe'));
+                [EEG.event(hab_idx).type] = deal('habituation');
+            end
+            % 1) Remove number in event name that represented time indication
+            conditions = ["open", "close", "end", "pre-pulse", "probe", "habituation"];
+            for cond = conditions
+                idx = find(contains({EEG.event.type}, cond));  % partial match now safe
+                [EEG.event(idx).type] = deal(char(cond));
+            end
+            % 2) Adapt events of startle task
+            if strcmp(tasks{task_i}, 'startle') %this only needed for startle task
+                % a) Recode probe events with or without preceding pre-pulse
+                % logical index of probe and pre-pulse events
+                probe_idx = strcmpi({EEG.event.type}, 'probe');
+                pp_idx    = strcmpi({EEG.event.type}, 'pre-pulse');
+                % get corresponding latencies
+                probe_lats = [EEG.event(probe_idx).latency];
+                pp_lats    = [EEG.event(pp_idx).latency];
+                % check where probe an pre-pulse latencies match 
+                for ev = 1:length(EEG.event)
+                    if strcmpi(EEG.event(ev).type, 'probe')
+                        probe_lat = EEG.event(ev).latency;
+                        if any(pp_lats == probe_lat) %check if any pre-pulses have the same latency 
+                            EEG.event(ev).type = 'probe_pp';
+                        else
+                            EEG.event(ev).type = 'probe_solo';
+                        end
+                    end
+                end
+                % b) Subtract 100 ms of the pre-pulse latencies
+                EEG.event(pp_idx) = arrayfun(@(e) setfield(e, 'latency', e.latency - 0.1*EEG.srate), EEG.event(pp_idx));
+                % Clean up event structure
+                EEG = eeg_checkset(EEG, 'eventconsistency');
+            end
+
+            % -- Filter -- 
+            EEG = pop_eegfiltnew(EEG, 'locutoff',1,'hicutoff',35); % filter between 1-35 Hz
+
+            % -- Save processed EEG set --
+            fprintf('\n****\nSaving processed subject %i session %s %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
+            SaveName = sprintf( '%i-%s-%s_Filtered.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
+            EEG      = pop_saveset( EEG,'filename',SaveName,'filepath', path2save );
+
+             % -- Clear EEG set --
+            clear EEG
+            ALLEEG(1:end) = [];
+        end
     end
 end
 
-% eyes closed: insert events
-for i = 1:length(close_begin)
-    trggLats = close_period(i,1):EEG.srate:(close_period(i,2)-1*EEG.srate);
-    for segi = 1:length(trggLats)
-        EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
-            'changefield',{ segi ,'type',    'close' },...
-            'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
+
+
+
+%% Epoch and clean the data
+% % % % Note: 
+% % % % No re-referencing possible due to lack of reference electrode;
+% % % % No downsampling not needed due to low sampling rate);
+% % % % No ICA possible due to low number of channels
+% % % 
+% % % % Filter between 1-30 Hz
+% % % EEG = pop_eegfiltnew(EEG, 'locutoff',1,'hicutoff',30);
+% % % 
+% % % 
+% % % % Add event after each 1-second into eyes-open or eyes-closed condition 
+% % % % 1) find event latencies of start
+% % % open_begin  = sort(find(strcmpi( {EEG.event.type}, 'open' ))); %Find the open/closed eyes onset triggers
+% % % close_begin = sort(find(strcmpi( {EEG.event.type}, 'close' )));
+% % % 
+% % % % eyes open: find start latencies
+% % % for i = 1:length(open_begin)
+% % %     open_period(i,1) = EEG.event(open_begin(i)).latency;
+% % %     open_period(i,2) = EEG.event(open_begin(i)).latency + 60*EEG.srate;
+% % % end
+% % % % eyes closed: find start latencies
+% % % for i = 1:length(close_begin)
+% % %     close_period(i,1) = EEG.event(close_begin(i)).latency;
+% % %     close_period(i,2) = EEG.event(close_begin(i)).latency + 60*EEG.srate;
+% % % end
+% % % 
+% % % % eyes open: insert events
+% % % for i = 1:length(open_begin)
+% % %     trggLats = open_period(i,1):EEG.srate:(open_period(i,2)-1*EEG.srate);
+% % %     for segi = 1:length(trggLats)
+% % %         EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
+% % %             'changefield',{ segi ,'type',    'open' },...
+% % %             'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
+% % %     end
+% % % end
+% % % 
+% % % % eyes closed: insert events
+% % % for i = 1:length(close_begin)
+% % %     trggLats = close_period(i,1):EEG.srate:(close_period(i,2)-1*EEG.srate);
+% % %     for segi = 1:length(trggLats)
+% % %         EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
+% % %             'changefield',{ segi ,'type',    'close' },...
+% % %             'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
+% % %     end
+% % % end
+% % % 
+% % % 
+% % % % Epoch the data 
+% % % EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); % epoch 0-1 seconds around event
+
+% -- Epoch data --
+% * if needed: Create epoch markers automatically
+if strcmp(tasks{task_i}, 'rust') %here: only needed for rest-EEG
+    % To divide long-duration recordings (e.g., resting-state EEG) into epochs, add trigger events, e.g., after each 1-second period
+    conds = {'open','close'};
+    for ci = 1:numel(conds)
+        cond = conds{ci};
+        starts = find(strcmpi({EEG.event.type}, cond));
+        for s = 1:length(starts)
+            period     = EEG.event(starts(s)).latency + [0 60*EEG.srate];
+            event_lats = period(1):EEG.srate:(period(2)-EEG.srate);
+            % append events
+            for segi = 1:length(event_lats)
+                new_event = EEG.event(1); %copy template of event to have all the struct-fields EEGlab requires
+                new_event.type    = cond; %overwrite event type
+                new_event.latency = event_lats(segi);  %overwrite event latency, in samples
+                EEG.event(end+1)  = new_event; %append
+            end
+        end
     end
 end
+EEG = eeg_checkset(EEG, 'eventconsistency'); %make sure events are sorted after inserting
 
+% for startle task: you want epochs from -1800 to 150 ms around startle probes, in order to quantify and baseline-correct the maximum amplitude between 20 and 120 milliseconds after probe onset 
+% Approach startel reflex as an eyeblink ("poor man's oscular-EMG") and try to quantify the amplitude of the blinks 20-120 ms after the probe as
+% detected by a blink algortihm for headband EEG such as Chang et al. 2014: https://doi.org/10.1016/j.cmpb.2015.10.011
 
-% Epoch the data 
-EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); % epoch 0-1 seconds around event
+% Epoch the data
+EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); %epoch 0-1 seconds around event
 
 
 %% Artifact rejection
