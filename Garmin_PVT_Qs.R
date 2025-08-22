@@ -586,9 +586,8 @@ df_plot <- df_merged %>%
       TRUE ~ NA_character_
     )
   )
-varname <-   "alertness"  "irritability", "skittish", 
-"rt_mean", "rt_sd","total_sleep_minutes", "T123_duration_awakening_24h"
-  
+varname <-     "total_sleep_minutes"  "T123_duration_awakening_24h"
+
 for (varname in vars_to_plot) {
   # # Plot met facets per deelnemer
   # p_facet <- ggplot(df_plot, aes(x = measurement, y = .data[[varname]], group = Castor.ID)) +
@@ -614,7 +613,7 @@ for (varname in vars_to_plot) {
     labs(
       title = "Color split: Slaapduur",
       x = "Meetmoment",
-      y = varname,
+      y = "Slaapduur (in min)",   #varname,
       color = "Slaap"
     ) +
     scale_color_manual(values = c("darkgreen", "darkorange", "lightgrey")) +
@@ -627,7 +626,7 @@ for (varname in vars_to_plot) {
     labs(
       title = "Color split: Rang (categorie)",
       x = "Meetmoment",
-      y = varname,
+      y = "Slaapduur (in min)",  #varname,
       color = "Rang_categorie"
     ) +
     scale_color_manual(values = c( "brown", "darkblue")) +
