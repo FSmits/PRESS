@@ -8,7 +8,7 @@
 %             - Data type: EEG time series with trigger events (time stamps)
 %             - Design: within-subjects longitudinal, 3 timepoints (T0 ("M1:") 27th 03/'25, T1 ("M2"): 10th and 11th 04/'25, T1 ("M4"): 24th 04/'25)
 %
-% Date:             July 2025, update Aug 2025
+% Date:             July 2025, update Dec 2025
 % Matlab version:   2024b
 %
 % --------------------------------------------------------------------- %
@@ -30,7 +30,7 @@ cd('/Users/fsmits2/Downloads/eeglab2024.2')
 %% Set paths and subject IDs
 
 % find path name to research folder structure (RFS)
-path2RFS = '/Volumes/Onderzoek-2/Groep Geuze/25U-0078_PRESS/';
+path2RFS = '/Users/fsmits2/Networkshares/Onderzoek/Groep Geuze/25U-0078_PRESS/'; % Enter your path to RFS. End with slash ('/' on Max, '\' on Windows)
 
 % set other paths 
 path2data    = [path2RFS 'E_ResearchData/2_ResearchData/'];
@@ -50,12 +50,13 @@ tasks    = {'rust', 'startle'};
 
 %% Load data, filter and epoch
 
-% Note: 
-% No re-referencing possible due to lack of reference electrode;
-% No downsampling not needed due to low sampling rate;
-% No ICA possible due to low number of channels
+% Notes: 
+% 1. Cleaning based on paper: Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG. In 2021 IEEE International Conference on Bioinformatics and Biomedicine (BIBM) (pp. 1-5). IEEE. https://doi.org/10.1109/BIBM52615.2021.9669415
+% 2. No re-referencing possible due to lack of reference electrode;
+% 3. No downsampling: not needed due to low sampling rate;
+% 4. No ICA possible due to low number of channels
 
-% % example filename
+%  %% * Example filename:
 % filename = 'sub-110027_ses-M1-rust_task-Default_run-001_eeg.xdf.set'; 
 
 % Loop over subjects, sessions and tasks (rest and startle)
@@ -78,7 +79,7 @@ for subj_i = 1:length(subj_list)
             EEG      = pop_loadset('filename',filename,'filepath',path2EEGsets);
 
 
-            % % -- * if needed: View set characteristics or plot for visual inspection
+            %  %% * if needed: View set characteristics or plot for visual inspection
             % disp(EEG);
             % pop_eegplot( EEG, 1, 1, 1); % Inspect data
 
@@ -104,14 +105,14 @@ for subj_i = 1:length(subj_list)
             end
             % 2) Adapt events of startle task
             if strcmp(tasks{task_i}, 'startle') %this only needed for startle task
-                % a) Recode probe events with or without preceding pre-pulse
+                % a) Recode probe events to probes with or without preceding pre-pulse
                 % logical index of probe and pre-pulse events
                 probe_idx = strcmpi({EEG.event.type}, 'probe');
                 pp_idx    = strcmpi({EEG.event.type}, 'pre-pulse');
                 % get corresponding latencies
                 probe_lats = [EEG.event(probe_idx).latency];
                 pp_lats    = [EEG.event(pp_idx).latency];
-                % check where probe an pre-pulse latencies match 
+                % check where probe and pre-pulse latencies match 
                 for ev = 1:length(EEG.event)
                     if strcmpi(EEG.event(ev).type, 'probe')
                         probe_lat = EEG.event(ev).latency;
@@ -129,14 +130,16 @@ for subj_i = 1:length(subj_list)
             end
 
             % -- Filter -- 
-            EEG = pop_eegfiltnew(EEG, 'locutoff',1,'hicutoff',34); % filter between 1-34 Hz (1-35 Hz not possible because some data sets have a reduce sampling rate of 69.9, and filter requires at least double the sampling rate)
+            % Filter settings: Delorme 2021 uses lowpass filter at 40 Hz. Here, we likewise apply no highpass filter and we lowpass filter at 34 Hz for this is the maximum that we can apply universally to all datasets because some datasets have a reduced sampling rate of 69.9, and filter requires at least double the sampling rate.
+            % Output:          'EEG' contains the filtered EEGLAB structure, 'com' contains the history string (the matlab command), 'b' contains the filter coefficients (plot to see the filter)
+            [EEG, com, b] = pop_eegfiltnew(EEG,'hicutoff',34); % with highpass filer at 1 hz: EEG = pop_eegfiltnew(EEG, 'locutoff',1,'hicutoff',34); 
 
             % -- Save processed EEG set --
             fprintf('\n****\nSaving processed subject %i session %s %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
             SaveName = sprintf( '%i-%s-%s_Filtered.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
             EEG      = pop_saveset( EEG,'filename',SaveName,'filepath', path2save );
 
-             % -- Clear EEG set --
+             % -- Clear this EEG set from workspace before iterating to the next --
             clear EEG
             ALLEEG(1:end) = [];
         end
