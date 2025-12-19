@@ -129,7 +129,7 @@ for subj_i = 1:length(subj_list)
             end
 
             % -- Filter -- 
-            EEG = pop_eegfiltnew(EEG, 'locutoff',1,'hicutoff',35); % filter between 1-35 Hz
+            EEG = pop_eegfiltnew(EEG, 'locutoff',1,'hicutoff',34); % filter between 1-34 Hz (1-35 Hz not possible because some data sets have a reduce sampling rate of 69.9, and filter requires at least double the sampling rate)
 
             % -- Save processed EEG set --
             fprintf('\n****\nSaving processed subject %i session %s %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
