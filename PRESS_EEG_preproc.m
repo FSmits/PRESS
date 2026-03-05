@@ -7,9 +7,15 @@
 %             - Measure/instrument: Muse S Headband recordings
 %             - Data type: EEG time series with trigger events (time stamps)
 %             - Design: within-subjects longitudinal, 3 timepoints (T0 ("M1:") 27th 03/'25, T1 ("M2"): 10th and 11th 04/'25, T1 ("M4"): 24th 04/'25)
+%
+% Required toolbox:
+% EEGLAB (used: version 2024.2)
+% Required EEGLAB plugins:
+% - clean_rawdata (used: version 2.11)
+%
 % Notes: 
 % 1. Cleaning based on paper: Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG. In 2021 IEEE International Conference on Bioinformatics and Biomedicine (BIBM) (pp. 1-5). IEEE. https://doi.org/10.1109/BIBM52615.2021.9669415
-% 2. No re-referencing possible due to low no. channels;
+% 2. No re-referencing possible due to low no. channels; (or yes?)
 % 3. No downsampling: not needed due to low sampling rate;
 % 4. No ICA possible due to low no. channels
 %
@@ -27,9 +33,14 @@ close all
 %% Initialize
 
 % initialize eeglab in nogui mode (no GUI opens, all initializes synchronously)
-cd('/Users/fsmits2/Downloads/eeglab2024.2')
+%cd('/Users/fsmits2/Downloads/eeglab2024.2')
+addpath('/Users/fsmits2/Downloads/eeglab2024.2') %('/Applications/eeglab2024.0')
 [ALLEEG, EEG, CURRENTSET, ALLCOM] = eeglab('nogui');
 % NOTE: If EEGlab is started with GUI, do not continue before eeglab is fully started >> code will not run because EEGlab function start ups may still run asynchronously [in the background]
+% % with GUI:
+% [ALLEEG, EEG, CURRENTSET, ALLCOM] = eeglab;
+
+
 
 
 %% Set paths and subject IDs
@@ -56,7 +67,7 @@ sessions = {'M1', 'M2', 'M4'};
 tasks    = {'rust', 'startle'};
 
 
-%% Load data, filter
+%% Load data, re-reference, filter
 
 %  %% * Example filename:
 % filename = 'sub-110027_ses-M1-rust_task-Default_run-001_eeg.xdf.set'; 
@@ -76,15 +87,12 @@ for subj_i = 1:length(subj_list)
                 continue;  % skip to next iteration of your subject/session/task loop
             end
 
-
             % -- Load raw EEG set --
             EEG      = pop_loadset('filename',filename,'filepath',path2EEGsets);
-
 
             %  %% * if needed: View set characteristics or plot for visual inspection
             % disp(EEG);
             % pop_eegplot( EEG, 1, 1, 1); % Inspect data
-
 
             % -- Add info to EEG structure --
             EEG.filename  = filename;
@@ -93,6 +101,8 @@ for subj_i = 1:length(subj_list)
             EEG.session   = sess_i;
             EEG.condition = tasks{task_i};
 
+            % -- Select only brain activity channels (AF7,AF8,TP9,TP10) (i.e., remove flat line right AUX channel)
+            EEG = pop_select( EEG, 'channel',{'TP9','AF7','AF8','TP10'});
 
             % -- Rename trigger events --
             % 0) Rename 'habituation_probe' (startle task) to 'habituation_sound' to avoid matching 'probe'
@@ -132,6 +142,12 @@ for subj_i = 1:length(subj_list)
                 EEG = eeg_checkset(EEG, 'eventconsistency');
             end
 
+            % % -- Re-reference --
+            % % Re-reference to avg mastoids when interested in frontal activity - advise by: https://doi.org/10.1101/2021.11.02.466989 Cannard, C., Wahbeh, H., & Delorme, A. (2021, December). Validating the wearable MUSE headset for EEG spectral analysis and Frontal Alpha Asymmetry. IEEE.
+            % mastoid1 = find(strcmpi( {EEG.chanlocs.labels}, 'TP9' ));
+            % mastoid2 = find(strcmpi( {EEG.chanlocs.labels}, 'TP10' ));
+            % EEG      = pop_reref( EEG, [mastoid1 mastoid2]); %re-references to the average of 2 channels << check if this is right, or put the "real" formula here: Vref = ½(vLM + vRM) where Vref is the reference signal and vLM and vRM are the signals for the left and right mastoid channels respectively
+
             % -- Filter -- 
             % Filter settings: Delorme 2021 uses lowpass filter at 40 Hz. Here, we likewise apply no highpass filter and we lowpass filter at 34 Hz for this is the maximum that we can apply universally to all datasets because some datasets have a reduced sampling rate of 69.9, and filter requires at least double the sampling rate.
             % Output:          'EEG' contains the filtered EEGLAB structure, 'com' contains the history string (the matlab command), 'b' contains the filter coefficients (plot to see the filter)
@@ -139,7 +155,7 @@ for subj_i = 1:length(subj_list)
 
             % -- Save processed EEG set --
             fprintf('\n****\nSaving processed subject %i session %s %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
-            SaveName = sprintf( '%i-%s-%s_Filtered.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
+            SaveName = sprintf( '%i-%s-%s_filtered.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
             EEG      = pop_saveset( EEG,'filename',SaveName,'filepath', path2save );
 
              % -- Clear this EEG set from workspace before iterating to the next --
@@ -189,7 +205,7 @@ for subj_i = 1:length(subj_list)
 
             % Save
             fprintf('\n****\nSave epoched data subject %i session %s task %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
-            SaveName = [num2str(subj_list(subj_i)) '-' sessions{sess_i} '-' tasks{task_i} '_epoched.set'];
+            SaveName = sprintf( '%i-%s-%s_epoched.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
             EEG      = pop_saveset( EEG, 'filename',SaveName,'filepath', path2save );
 
         end
@@ -243,6 +259,10 @@ end
 % No downsampling not needed due to low sampling rate);
 % No ICA possible due to low no. channels
 
+% 0) Import a channel location file 
+% (needed? for Artifact Subspace Reconstruction, ASR)
+EEG = pop_chanedit(EEG, {'lookup','/Users/fsmits2/Downloads/eeglab2024.2/plugins/dipfit/standard_BEM/elec/standard_1005.elc'});
+
 
 % 1) initiate or load matrix to save noisy channels and rejected epochs
 % Check if file exists:
@@ -276,60 +296,167 @@ for subj_i = 1:length(subj_list)
     for sess_i = 1:length(sessions)
         for task_i = 1:length(tasks)
 
-            filename = [num2str(subj_list(subj_i)) '-' sessions{sess_i} '-' tasks{task_i} '_epoched.set'];
+            filename = sprintf( '%i-%s-%s_epoched.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
 
             % Load EEG set
-            EEG      = pop_loadset('filename', filename , 'filepath', path2save);
+            EEG = pop_loadset('filename', filename , 'filepath', path2save);
 
-            % Find channels with high standard deviation to detect noisy channels
+            % Detect noisy channels
             pop_eegplot( EEG, 1, 1, 1);
-            chansd     = std(EEG.data(1:4, :)');
-            fprintf('Channel SD: %i. \n', chansd);
-            % Find channels with above threshold (>25) mean bandpower in PSD 5-34 Hz (34 Hz is based on filter freq, and 5 Hz is based on Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG.)
-            % - — Compute PSD - -  window  = min(EEG.srate, EEG.pnts);
             for chan = 1:EEG.nbchan
-                % concatenate epochs
+                % - - Compute standard deviation - -                
+                chansd = std(EEG.data(chan, :)');
+                fprintf('%f = STD channel %s.\n', chansd, EEG.chanlocs(chan).labels);
+                % - — Compute PSD - - 
+                % Concatenate epochs
                 signal = reshape(EEG.data(chan,:,:), [], 1); %squeeze over timepoints × trials
+                % Compute mean bandpower per channel in PSD 5-34 Hz (34 Hz is based on filter freq, and 5 Hz is based on Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG.)
+                % Delorme et al. use mean bandpower >25 log10(µV2)/Hz as threshold.
                 [pxx,f] = pwelch(signal, window, 0, [], EEG.srate);
                 idx = f >= 5 & f <= 34;
-                band_power(chan) = mean(log10(pxx(idx)));
+                band_power = mean(log10(pxx(idx)));
+                fprintf('%f = mean PSD channel %s.\n', band_power, EEG.chanlocs(chan).labels);
             end
-            fprintf('Channel mean PSD: %i. \n', band_power);
+            
             % Visually check noisy channels in plot and decide to keep or reject
-            m3a = "no";
+            m3a = "no"; m3 = -1;
             while m3a ~= "yes"
                 m3a = input('Ready to input channels to leave out? Type [yes] ','s');
-            end
-            m3 = -1;
+            end       
             while m3 == -1
                 m3 = str2double( input('How many channels to leave out? ','s') );
             end
-            badchannels   = {[]};
-            noisychannels = [];
+            badchannels = {[]}; badchannrs = [];
             if m3 > 0
-                for bchni = 1:m3
-                    badchannels{bchni}   = input(['Which channel to leave out? nr: ' num2str(bchni) ' ' ],'s') ;
-                    noisychannels(bchni) = find( strcmpi( badchannels{bchni}, {EEG.chanlocs.labels} ));
+                for badchani = 1:m3
+                    badchannels{badchani} = input(['Which channel to leave out? nr: ' num2str(badchani) ' ' ],'s') ;
+                    badchannrs(badchani)  = find( strcmpi( badchannels{badchani}, {EEG.chanlocs.labels} ));
                 end
                 bdchns{subj_i,sess_i+1}  = string(badchannels);
             else
                 bdchns{subj_i,sess_i+1}  = '0';
             end
-            EEG.eventdescription         = { {'Too much noise in channels: '} badchannels };
+            EEG.eventdescription = { {'Too much noise in channels: '} badchannels };
 
             % Leave noisy channels (previously detected and saved) out of consideration for epoch rejection
             badchannels = bdchns{subj_i, sess_i+1};
             chanarray   = 1:length(EEG.chanlocs);
             if sum( strcmpi( badchannels, '0') ) < 1
                 badchans = regexp(badchannels, ',', 'split');
-                noisychannels = [];
-                for bchni = 1:length(badchans)
-                    noisychannels(bchni) = find( strcmpi( badchans{bchni}, {EEG.chanlocs.labels} ));
+                badchannrs = [];
+                for badchani = 1:length(badchans)
+                    badchannrs(badchani) = find( strcmpi( badchans{badchani}, {EEG.chanlocs.labels} ));
                 end
-                chanarray(noisychannels) = []; % remove the noisy channels from chanarray
+                chanarray(badchannrs) = []; % remove the noisy channels from chanarray
             end
 
-            % Semi-automatic artifact rejection
+            % - - Semi-automatic artifact rejection - -
+            % Artifact Subspace Reconstruction (ASR)
+            % Method (ASR) based on Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG. In 2021 IEEE International Conference on Bioinformatics and Biomedicine (BIBM) (pp. 1-5). IEEE. https://doi.org/10.1109/BIBM52615.2021.9669415
+            % Paramaters based on musemonitor code (https://github.com/sccn/eeglab_musemonitor_plugin/blob/master/pop_musemonitor.m)
+            % BurstCriterion value: 11 ("The best method is the ASR method with a parameter of 11.")
+            channel_crit = 0.8;
+            burst_crit   = 11;
+
+            % from musemonitor code:
+            EEG = clean_rawdata(EEG, ...
+                'FlatlineCriterion','off',...
+                'ChannelCriterion',channel_crit,...
+                'LineNoiseCriterion',5,...
+                'Highpass',[0.25 0.75],...
+                'BurstCriterion',burst_crit,...
+                'WindowCriterion',0.25,...
+                'BurstRejection','on',...
+                'Distance','Euclidian',...
+                'WindowCriterionTolerances',[-Inf 7] );
+
+            % Delorme paper says: "We varied the WindowCriterionTolerances argument 
+            % from 5 to 15 in increments of 1, set the WindowCriterion parameter 
+            % to 0 (to automatically reject bad portions of data instead of trying 
+            % to correct them), and disabled all other features including BurstRemoval. 
+            % We used default values for filtering parameters."
+            % Implementing this text in code below:
+            EEG = pop_clean_rawdata(EEG, ...
+                'FlatlineCriterion','off', ...
+                'ChannelCriterion','off', ...
+                'LineNoiseCriterion','off', ...
+                'Highpass',[0.25 0.75], ...
+                'BurstCriterion',burst_crit, ...
+                'WindowCriterion',0, ...
+                'BurstRejection','off', ...
+                'Distance','Euclidian', ...
+                'WindowCriterionTolerances',[-Inf 15] );
+
+           % from code David ten Kate:
+            EEG_clean = clean_artifacts(EEG, ...
+                'FlatlineCriterion','off', ...
+                'ChannelCriterion',25, ...
+                'LineNoiseCriterion',5, ...
+                'Highpass',[0.25 0.75], ...
+                'BurstCriterion',11, ...
+                'WindowCriterion',0.25, ...
+                'BurstRejection','on', ...
+                'Distance','Euclidian', ...
+                'WindowCriterionTolerances',[-Inf 7]);
+
+
+            % - - Artifact rejection with ASR - -
+            % Create continuous signal from epoched data (required for ASR) - -
+            EEG = eeg_epoch2continuous(EEG);
+            % Artifact rejection with ASR in repair mode (no removal of data, just get suggestion of what should be removed):
+            EEG_asr = clean_artifacts(EEG, ...
+                'FlatlineCriterion','off', ...
+                'ChannelCriterion','off', ...  % prevent automatic removal of channels
+                'LineNoiseCriterion',5, ...
+                'Highpass',[0.25 0.75], ...
+                'BurstCriterion',11, ... 
+                'BurstCriterionRefMaxBadChns','off', ...               
+                'WindowCriterion',0.5, ...
+                'BurstRejection','off', ... % prevent automatic removal of segments
+                'Distance','Euclidian');
+
+            % Visualize artifacts:
+            vis_artifacts(EEG_asr, EEG, 'WindowLength', 50, 'DisplayMode', 'both');
+
+            % find bad samples according to ASR:
+            bad_samples = find(~EEG_asr.etc.clean_sample_mask);
+
+              
+            % View the bad segments in plot
+            %   Scale value to 100 and 29 epochs per window. 
+            %rej_epocs(subj_i,1+sess_i) = EEG.trials; % Save total number of epochs
+            EEG = eeg_checkset( EEG );
+            pop_eegplot( EEG, 1, 1, 0); % Plot data with marked epochs but do not immediately reject, only mark as noisy
+
+% ----------------- 04/03/26
+            m0 = -1;
+            while m0 == -1
+                m0 = input('Ready to reject samples? ','s');
+                while isempty(m0)
+                    m0 = input('Ready to reject samples? [yes]: ','s');
+                end
+            end
+
+            noisyepocs = find(EEG.reject.rejmanual > 0) % see & save final series of marked epochs
+            length(noisyepocs)
+
+            m1 = [] ;
+            while isempty(m1)
+                m1 = input('How many epochs rejected? [enter number]: ','s');
+            end
+
+            rej_epocs(subj_i,3+sess_i) = str2double(m1);
+            EEG.epochdescription       = [m1 '/' num2str(rej_epocs(subj_i,1+sess_i)) ' trials rejected'];
+            EEG                        = pop_rejepoch( EEG, noisyepocs , 1);
+            [ALLEEG EEG CURRENTSET]    = pop_newset(ALLEEG, EEG, CURRENTSET,'gui','off');
+            EEG = eeg_checkset( EEG );
+            [ALLEEG, EEG, CURRENTSET]  = eeg_store( ALLEEG, EEG );
+
+           
+
+
+
+
             %     Gradient:  Specifies that the absolute difference between two adjacent sample points of data must not exceed a value (artifact of weird spikes). Starting values from Boost tutorial: Gradient: 75 μV
             %     Amplitude: Specifies that the voltage must not  exceed a certain value (artifacts like eye blinks). Starting values from Boost tutorial: Max-Min: 150 μV/200 ms
             %     Diff max-Min: Sets the threshold for the difference between the minimum and maximum voltages within the entire segment (voltage drifts). Starting values from Boost tutorial: Amplitude: -100 μV, +100 μV"
