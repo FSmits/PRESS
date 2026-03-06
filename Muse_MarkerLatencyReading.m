@@ -17,10 +17,10 @@ id = [id_t0_muse2022 id_t0_muse2025];
 recordings = {{'rust' 'rest'}, {'startle'}};
 
 % change filename according to the file you want to load
-prefix = '/Volumes/heronderzoek-1/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/Muse/';
+prefix = '/Users/fsmits2/Networkshares/Onderzoek/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/0. Ruwe data (niet in werken)/Muse/';
 
 % Loop over subjects and recordings
-for subj_i = 16:length(id)
+for subj_i = 1:length(id)
 
     for rec_i = 1:length(recordings)
 
@@ -111,7 +111,7 @@ for subj_i = 16:length(id)
         % Change the sampling rate to the effective sampling rate in the eegset
         EEG = pop_editset(EEG, 'srate', srate);
         % Add the marker timestamps based on the effective sampling rate
-        for i = 1:size(EEG.event,2)-1
+        for i = 1:length(timestamps_delta)
             EEG.event(i).latency = round(timestamps_delta(i) * srate); %EEGLAB wants latency in sampling points so multiply by sampling rate
         end
 
@@ -120,7 +120,7 @@ for subj_i = 16:length(id)
 
         % save as eeglab dataset including the correctly times markers:'
         setname2save = [EEG.setname '.set'];
-        path2save = '/Volumes/heronderzoek-1/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/Muse/EEGLAB sets with markers/';
+        path2save = '/Users/fsmits2/Networkshares/Onderzoek/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/0. Ruwe data (niet in werken)/Muse/EEGLAB sets with markers/';
         EEG = pop_saveset( EEG, 'filename',setname2save,'filepath',path2save);
 
         % clear EEG and close EEGLAB
