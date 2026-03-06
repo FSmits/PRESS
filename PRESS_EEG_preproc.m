@@ -67,7 +67,7 @@ sessions = {'M1', 'M2', 'M4'};
 tasks    = {'rust', 'startle'};
 
 
-%% Load data, re-reference, filter
+%% Load data, trim, filter
 
 %  %% * Example filename:
 % filename = 'sub-110027_ses-M1-rust_task-Default_run-001_eeg.xdf.set'; 
@@ -142,6 +142,28 @@ for subj_i = 1:length(subj_list)
                 EEG = eeg_checkset(EEG, 'eventconsistency');
             end
 
+            % -- Trim the data to time of experimental task --
+            % find first and last event latency
+            clear start_event; clear first_event; clear last_event;
+            if task_i == 1
+                start_event = find(strcmp({EEG.event.type}, 'open'),1); %first eyes open condition in resting-state EEG
+            else
+                start_event = find(strcmp({EEG.event.type}, 'habituation'),1); %first habituation probe in startle paradigm
+            end
+            first_event = EEG.event(start_event).latency;
+            last_event  = EEG.event(end).latency;
+            % convert to seconds
+            start_time = first_event / EEG.srate;
+            end_time   = last_event / EEG.srate;
+            % Define how much time of data to keep after last experimental event (absence of 'end' event)
+            if task_i == 1
+                extra_time = 60; % resting-state EEG: maintain 60 seconds of data after last event
+            else
+                extra_time = 5; % startle paradigm: maintain 5 seconds of data after last event
+            end
+            % trim dataset
+            EEG = pop_select(EEG, 'time', [start_time end_time+extra_time]);
+
             % % -- Re-reference --
             % % Re-reference to avg mastoids when interested in frontal activity - advise by: https://doi.org/10.1101/2021.11.02.466989 Cannard, C., Wahbeh, H., & Delorme, A. (2021, December). Validating the wearable MUSE headset for EEG spectral analysis and Frontal Alpha Asymmetry. IEEE.
             % mastoid1 = find(strcmpi( {EEG.chanlocs.labels}, 'TP9' ));
@@ -155,7 +177,7 @@ for subj_i = 1:length(subj_list)
 
             % -- Save processed EEG set --
             fprintf('\n****\nSaving processed subject %i session %s %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
-            SaveName = sprintf( '%i-%s-%s_filtered.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
+            SaveName = sprintf( '%i-%s-%s_trimmed_filtered.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
             EEG      = pop_saveset( EEG,'filename',SaveName,'filepath', path2save );
 
              % -- Clear this EEG set from workspace before iterating to the next --
@@ -167,23 +189,27 @@ end
 
 
 
-%% Epoch the data
+%% Insert markers and epoch
+
+% Define condition and epoch lengths (in seconds)
+cond_length  = 60; %60 seconds (1 minute)
+epoch_length = 2; %2 seconds
 
 % Loop over subjects, sessions and tasks (rest and startle)
 for subj_i = 1:length(subj_list)
     for sess_i = 1:length(sessions)
         for task_i = 1:length(tasks)
 
-            % * if needed: Create epoch markers automatically
+            % - - Create epoch markers - - 
             if strcmp(tasks{task_i}, 'rust') %here: only needed for rest-EEG
-                % To divide long-duration recordings (e.g., resting-state EEG) into epochs, add trigger events after each (f.e.) 1-second period
+                % To divide long-duration recordings (e.g., resting-state EEG) into epochs, add trigger events after each (f.e.) 2-second period
                 conds = {'open','close'};
                 for ci = 1:numel(conds)
                     cond = conds{ci};
                     starts = find(strcmpi({EEG.event.type}, cond));
                     for s = 1:length(starts)
-                        period     = EEG.event(starts(s)).latency + [0 60*EEG.srate];
-                        event_lats = period(1):EEG.srate:(period(2)-EEG.srate);
+                        period     = EEG.event(starts(s)).latency + [0 cond_length*EEG.srate];
+                        event_lats = period(1):(EEG.srate*2):(period(2)-EEG.srate);
                         % append events
                         for segi = 1:length(event_lats)
                             new_event = EEG.event(1); %copy template of event to have all the struct-fields EEGlab requires
@@ -193,71 +219,50 @@ for subj_i = 1:length(subj_list)
                         end
                     end
                 end
+
+                % Make sure events are sorted after inserting
+                EEG = eeg_checkset(EEG, 'eventconsistency'); 
+
+                % Epoch the data
+                EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); %epoch 0-1 seconds around event
+
             end
-            EEG = eeg_checkset(EEG, 'eventconsistency'); %make sure events are sorted after inserting
 
-            % for startle task: you want epochs from -1800 to 150 ms around startle probes, in order to quantify and baseline-correct the maximum amplitude between 20 and 120 milliseconds after probe onset
-            % Approach startle reflex as an eyeblink ("poor man's ocular-EMG") and try to quantify the amplitude of the blinks 20-120 ms after the probe as
-            % detected by a blink algortihm for headband EEG such as Chang et al. 2014: https://doi.org/10.1016/j.cmpb.2015.10.011
+            if strcmp(tasks{task_i}, 'rust') %here: only needed for rest-EEG
+                % To divide long-duration recordings (e.g., resting-state EEG) into epochs, add trigger events after each (f.e.) 2-second period
+                conds = {'open','close'};
+                for ci = 1:numel(conds)
+                    cond = conds{ci};
+                    starts = find(strcmpi({EEG.event.type}, cond));
+                    for s = 1:length(starts)
+                        period     = EEG.event(starts(s)).latency + [0 cond_length*EEG.srate];
+                        event_lats = period(1):(EEG.srate*2):(period(2)-EEG.srate);
+                        % append events
+                        for segi = 1:length(event_lats)
+                            new_event = EEG.event(1); %copy template of event to have all the struct-fields EEGlab requires
+                            new_event.type    = cond; %overwrite event type
+                            new_event.latency = event_lats(segi);  %overwrite event latency, in samples
+                            EEG.event(end+1)  = new_event; %append
+                        end
+                    end
+                end
 
-            % Epoch the data
-            EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); %epoch 0-1 seconds around event
+                % Make sure events are sorted after inserting
+                EEG = eeg_checkset(EEG, 'eventconsistency'); 
 
-            % Save
-            fprintf('\n****\nSave epoched data subject %i session %s task %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
-            SaveName = sprintf( '%i-%s-%s_epoched.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
-            EEG      = pop_saveset( EEG, 'filename',SaveName,'filepath', path2save );
+                % Epoch the data
+                EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); %epoch 0-1 seconds around event
+
+            end
+            
 
         end
     end
 end
 
-% % % % Add event after each 1-second into eyes-open or eyes-closed condition 
-% % % % 1) find event latencies of start
-% % % open_begin  = sort(find(strcmpi( {EEG.event.type}, 'open' ))); %Find the open/closed eyes onset triggers
-% % % close_begin = sort(find(strcmpi( {EEG.event.type}, 'close' )));
-% % % 
-% % % % eyes open: find start latencies
-% % % for i = 1:length(open_begin)
-% % %     open_period(i,1) = EEG.event(open_begin(i)).latency;
-% % %     open_period(i,2) = EEG.event(open_begin(i)).latency + 60*EEG.srate;
-% % % end
-% % % % eyes closed: find start latencies
-% % % for i = 1:length(close_begin)
-% % %     close_period(i,1) = EEG.event(close_begin(i)).latency;
-% % %     close_period(i,2) = EEG.event(close_begin(i)).latency + 60*EEG.srate;
-% % % end
-% % % 
-% % % % eyes open: insert events
-% % % for i = 1:length(open_begin)
-% % %     trggLats = open_period(i,1):EEG.srate:(open_period(i,2)-1*EEG.srate);
-% % %     for segi = 1:length(trggLats)
-% % %         EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
-% % %             'changefield',{ segi ,'type',    'open' },...
-% % %             'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
-% % %     end
-% % % end
-% % % 
-% % % % eyes closed: insert events
-% % % for i = 1:length(close_begin)
-% % %     trggLats = close_period(i,1):EEG.srate:(close_period(i,2)-1*EEG.srate);
-% % %     for segi = 1:length(trggLats)
-% % %         EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
-% % %             'changefield',{ segi ,'type',    'close' },...
-% % %             'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
-% % %     end
-% % % end
-% % % 
-% % % 
-% % % % Epoch the data 
-% % % EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); % epoch 0-1 seconds around event
 
-%% Artifact rejection
+%% Clean data
 % Evaluate and remove if necessary bad channels and epochs 
-% Note: 
-% No re-referencing possible due to low no. channels;
-% No downsampling not needed due to low sampling rate);
-% No ICA possible due to low no. channels
 
 % 0) Import a channel location file 
 % (needed? for Artifact Subspace Reconstruction, ASR)
@@ -283,11 +288,11 @@ end
 if ~exist(fullPath_rejep, 'file')
     % When not found, create a new matrix
     fprintf('Rejected epochs file not found: %s. \nCreating new file.\n', fullPath_rejep);
-    rej_epocs = [subj_list  nan( length(subj_list),length(sessions)*length(tasks) )];
+    rej_data = [subj_list  nan( length(subj_list),length(sessions)*length(tasks) )];
 else
     % When found, read existing matrix
     fprintf('Rejected epochs file found! %s. \nReading file.\n', fullPath_rejep);
-    rej_epocs = table2cell( readtable( fullPath_rejep ) );
+    rej_data = table2cell( readtable( fullPath_rejep ) );
 end
 
 
@@ -355,56 +360,13 @@ for subj_i = 1:length(subj_list)
             % Method (ASR) based on Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG. In 2021 IEEE International Conference on Bioinformatics and Biomedicine (BIBM) (pp. 1-5). IEEE. https://doi.org/10.1109/BIBM52615.2021.9669415
             % Paramaters based on musemonitor code (https://github.com/sccn/eeglab_musemonitor_plugin/blob/master/pop_musemonitor.m)
             % BurstCriterion value: 11 ("The best method is the ASR method with a parameter of 11.")
-            channel_crit = 0.8;
-            burst_crit   = 11;
-
-            % from musemonitor code:
-            EEG = clean_rawdata(EEG, ...
-                'FlatlineCriterion','off',...
-                'ChannelCriterion',channel_crit,...
-                'LineNoiseCriterion',5,...
-                'Highpass',[0.25 0.75],...
-                'BurstCriterion',burst_crit,...
-                'WindowCriterion',0.25,...
-                'BurstRejection','on',...
-                'Distance','Euclidian',...
-                'WindowCriterionTolerances',[-Inf 7] );
-
-            % Delorme paper says: "We varied the WindowCriterionTolerances argument 
-            % from 5 to 15 in increments of 1, set the WindowCriterion parameter 
-            % to 0 (to automatically reject bad portions of data instead of trying 
-            % to correct them), and disabled all other features including BurstRemoval. 
-            % We used default values for filtering parameters."
-            % Implementing this text in code below:
-            EEG = pop_clean_rawdata(EEG, ...
-                'FlatlineCriterion','off', ...
-                'ChannelCriterion','off', ...
-                'LineNoiseCriterion','off', ...
-                'Highpass',[0.25 0.75], ...
-                'BurstCriterion',burst_crit, ...
-                'WindowCriterion',0, ...
-                'BurstRejection','off', ...
-                'Distance','Euclidian', ...
-                'WindowCriterionTolerances',[-Inf 15] );
-
-           % from code David ten Kate:
-            EEG_clean = clean_artifacts(EEG, ...
-                'FlatlineCriterion','off', ...
-                'ChannelCriterion',25, ...
-                'LineNoiseCriterion',5, ...
-                'Highpass',[0.25 0.75], ...
-                'BurstCriterion',11, ...
-                'WindowCriterion',0.25, ...
-                'BurstRejection','on', ...
-                'Distance','Euclidian', ...
-                'WindowCriterionTolerances',[-Inf 7]);
-
-
-            % - - Artifact rejection with ASR - -
+            
             % Create continuous signal from epoched data (required for ASR) - -
             EEG = eeg_epoch2continuous(EEG);
+            % Save original data (without rejected segements)
+            EEG_orig = EEG;
             % Artifact rejection with ASR in repair mode (no removal of data, just get suggestion of what should be removed):
-            EEG_asr = clean_artifacts(EEG, ...
+            EEG = clean_artifacts(EEG, ...
                 'FlatlineCriterion','off', ...
                 'ChannelCriterion','off', ...  % prevent automatic removal of channels
                 'LineNoiseCriterion',5, ...
@@ -415,114 +377,34 @@ for subj_i = 1:length(subj_list)
                 'BurstRejection','off', ... % prevent automatic removal of segments
                 'Distance','Euclidian');
 
+            % Visually check bad segments in plot and decide whether to reject all (no other option, just verification of the ASR cleaning method)
             % Visualize artifacts:
-            vis_artifacts(EEG_asr, EEG, 'WindowLength', 50, 'DisplayMode', 'both');
-
-            % find bad samples according to ASR:
-            bad_samples = find(~EEG_asr.etc.clean_sample_mask);
-
-              
-            % View the bad segments in plot
-            %   Scale value to 100 and 29 epochs per window. 
-            %rej_epocs(subj_i,1+sess_i) = EEG.trials; % Save total number of epochs
-            EEG = eeg_checkset( EEG );
-            pop_eegplot( EEG, 1, 1, 0); % Plot data with marked epochs but do not immediately reject, only mark as noisy
-
-% ----------------- 04/03/26
-            m0 = -1;
-            while m0 == -1
-                m0 = input('Ready to reject samples? ','s');
-                while isempty(m0)
-                    m0 = input('Ready to reject samples? [yes]: ','s');
-                end
+            vis_artifacts(EEG, EEG_orig, 'WindowLength', 50, 'DisplayMode', 'both');
+            % Evaluate ASR segment rejection (check if or not ASR also rejects clean segments, f.e. high amplitude alpha oscillations can be confused for noise) 
+            m4 = 'N/A';
+            while ~strcmpi(m4,'yes') && ~strcmpi(m4,'no')
+                m4 = input('Marked segments rejection is OK? Type [yes] or [no]: ','s');
             end
+            
+            % Save percentage and evaluation of rejected data by ASR:
+            bad_samples              = find(~EEG.etc.clean_sample_mask);
+            perc_rejected            = length(bad_samples)/length(EEG_asr.etc.clean_sample_mask) * 100;
+            rej_idx                  = sess_i + task_i + (sess_i-1); % defines column in 'rej_data' where percentage should be written
+            rej_data(subj_i,rej_idx) = perc_rejected;
+            EEG.epochdescription     = [ perc_rejected ' perecentage of data rejected by ASR. Rejections evaluated as acceptable by visual inspection? ' m4];
 
-            noisyepocs = find(EEG.reject.rejmanual > 0) % see & save final series of marked epochs
-            length(noisyepocs)
-
-            m1 = [] ;
-            while isempty(m1)
-                m1 = input('How many epochs rejected? [enter number]: ','s');
-            end
-
-            rej_epocs(subj_i,3+sess_i) = str2double(m1);
-            EEG.epochdescription       = [m1 '/' num2str(rej_epocs(subj_i,1+sess_i)) ' trials rejected'];
-            EEG                        = pop_rejepoch( EEG, noisyepocs , 1);
+            % this is code is copied from when working from GUI. needed?
             [ALLEEG EEG CURRENTSET]    = pop_newset(ALLEEG, EEG, CURRENTSET,'gui','off');
             EEG = eeg_checkset( EEG );
             [ALLEEG, EEG, CURRENTSET]  = eeg_store( ALLEEG, EEG );
 
-           
-
-
-
-
-            %     Gradient:  Specifies that the absolute difference between two adjacent sample points of data must not exceed a value (artifact of weird spikes). Starting values from Boost tutorial: Gradient: 75 μV
-            %     Amplitude: Specifies that the voltage must not  exceed a certain value (artifacts like eye blinks). Starting values from Boost tutorial: Max-Min: 150 μV/200 ms
-            %     Diff max-Min: Sets the threshold for the difference between the minimum and maximum voltages within the entire segment (voltage drifts). Starting values from Boost tutorial: Amplitude: -100 μV, +100 μV"
-            winpnts = round(200/(1000/EEG.srate)); % points for window of 200 ms segments in the epoch
-            winidx  = 1:winpnts:EEG.pnts;
-            windiff = nan(1,length(winidx));
-            EEG.reject.rejmanual = zeros(1, EEG.trials); % Initialize the array for marked trials
-            EEG.reject.rejmanualE = zeros(length(EEG.chanlocs), EEG.trials);
-
-            % Loop over channels and epochs
-            for ichan = chanarray
-                for itrial = 1:EEG.trials
-                    gradient = max( abs( diff(EEG.data(ichan, :, itrial)) ) );
-                    ampliMax = max(EEG.data(ichan, :, itrial));
-                    ampliMin = min(EEG.data(ichan, :, itrial));
-                    for iwin = 1:length(winidx)-1
-                        [winmin, winmax] = bounds(EEG.data( ichan, winidx(iwin):winidx(iwin)+winpnts-1, itrial));
-                        windiff(iwin) = diff([winmin, winmax]);
-                    end
-                    diffV = max(windiff);
-
-                    if gradient > 50 || ampliMax > 100 || ampliMin < -100 || diffV > 150  % gradient > 50 || ampliMax > 75 || ampliMin < -75 || diffV > 150
-                        EEG.reject.rejmanual(1,itrial) = 1; % Mark the trial when a criterium is met
-                        EEG.reject.rejmanualE(ichan,itrial) = 1;
-                    end
-                end
-            end
-
-            % View the marked trials in plot
-            %   Scale value to 100 and 29 epochs per window. Pay attention to VEOG.
-            %   Reject the epoch around tACS artifact
-            rej_epocs(subj_i,1+sess_i) = EEG.trials; % Save total number of epochs
-            find(EEG.reject.rejmanual > 0) % See the marked epoch numbers
-            EEG = eeg_checkset( EEG );
-            pop_eegplot( EEG, 1, 1, 0); % Plot data with marked epochs but do not immediately reject, only mark as noisy
-
-            m0 = -1;
-            while m0 == -1
-                m0 = input('Ready to reject epocs? ','s');
-                while isempty(m0)
-                    m0 = input('Ready to reject epocs? [yes]: ','s');
-                end
-            end
-
-            noisyepocs = find(EEG.reject.rejmanual > 0) % see & save final series of marked epochs
-            length(noisyepocs)
-
-            m1 = [] ;
-            while isempty(m1)
-                m1 = input('How many epochs rejected? [enter number]: ','s');
-            end
-
-            rej_epocs(subj_i,3+sess_i) = str2double(m1);
-            EEG.epochdescription       = [m1 '/' num2str(rej_epocs(subj_i,1+sess_i)) ' trials rejected'];
-            EEG                        = pop_rejepoch( EEG, noisyepocs , 1);
-            [ALLEEG EEG CURRENTSET]    = pop_newset(ALLEEG, EEG, CURRENTSET,'gui','off');
-            EEG = eeg_checkset( EEG );
-            [ALLEEG, EEG, CURRENTSET]  = eeg_store( ALLEEG, EEG );
-
-            % Save
-            fprintf('\n****\nSave clean data subject %i session %i\n****\n\n', subj_list(subj_i), sessions(sess_i));
-            SaveName = [filename '_CleanEEG.set'];
+            % Save clean dataset
+            fprintf('\n****\nSave clean data subject %i session %s task %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
+            SaveName = sprintf( '%i-%s-%s_clean.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
             EEG      = pop_saveset( EEG, 'filename',SaveName,'filepath', path2EEGsets );
             cd(path2save);
-            writecell(  bdchns,     [path2save '/Overview_badchannels_'     'PRESS_restEEG' char(datetime('today')) '.txt'], 'Delimiter',',');
-            writematrix(rej_epocs,  [path2save '/Overview_rejected_epochs_' 'PRESS_restEEG' char(datetime('today')) '.txt'], 'Delimiter',',');
+            writecell(    bdchns,  [path2save '/Overview_badchannels_'     'PRESS_' char(datetime('today')) '.txt'], 'Delimiter',',');
+            writematrix(rej_data,  [path2save '/Overview_rejected_epochs_' 'PRESS_' char(datetime('today')) '.txt'], 'Delimiter',',');
 
             m2 = 0;
             while m2 == 0
@@ -544,6 +426,70 @@ for subj_i = 1:length(subj_list)
         end
     end
 end
+
+
+%% Epoch the data
+
+% Loop over subjects, sessions and tasks (rest and startle)
+for subj_i = 1:length(subj_list)
+    for sess_i = 1:length(sessions)
+        for task_i = 1:length(tasks)
+
+            % for startle task: you want epochs from -1800 to 150 ms around startle probes, in order to quantify and baseline-correct the maximum amplitude between 20 and 120 milliseconds after probe onset
+            % Approach startle reflex as an eyeblink ("poor man's ocular-EMG") and try to quantify the amplitude of the blinks 20-120 ms after the probe as
+            % detected by a blink algortihm for headband EEG such as Chang et al. 2014: https://doi.org/10.1016/j.cmpb.2015.10.011
+
+            % Epoch the data
+            EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); %epoch 0-1 seconds around event
+
+            % Save
+            fprintf('\n****\nSave epoched data subject %i session %s task %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
+            SaveName = sprintf( '%i-%s-%s_epoched.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
+            EEG      = pop_saveset( EEG, 'filename',SaveName,'filepath', path2save );
+
+        end
+    end
+end
+
+% % % % Add event after each 1-second into eyes-open or eyes-closed condition 
+% % % % 1) find event latencies of start
+% % % open_begin  = sort(find(strcmpi( {EEG.event.type}, 'open' ))); %Find the open/closed eyes onset triggers
+% % % close_begin = sort(find(strcmpi( {EEG.event.type}, 'close' )));
+% % % 
+% % % % eyes open: find start latencies
+% % % for i = 1:length(open_begin)
+% % %     open_period(i,1) = EEG.event(open_begin(i)).latency;
+% % %     open_period(i,2) = EEG.event(open_begin(i)).latency + 60*EEG.srate;
+% % % end
+% % % % eyes closed: find start latencies
+% % % for i = 1:length(close_begin)
+% % %     close_period(i,1) = EEG.event(close_begin(i)).latency;
+% % %     close_period(i,2) = EEG.event(close_begin(i)).latency + 60*EEG.srate;
+% % % end
+% % % 
+% % % % eyes open: insert events
+% % % for i = 1:length(open_begin)
+% % %     trggLats = open_period(i,1):EEG.srate:(open_period(i,2)-1*EEG.srate);
+% % %     for segi = 1:length(trggLats)
+% % %         EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
+% % %             'changefield',{ segi ,'type',    'open' },...
+% % %             'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
+% % %     end
+% % % end
+% % % 
+% % % % eyes closed: insert events
+% % % for i = 1:length(close_begin)
+% % %     trggLats = close_period(i,1):EEG.srate:(close_period(i,2)-1*EEG.srate);
+% % %     for segi = 1:length(trggLats)
+% % %         EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
+% % %             'changefield',{ segi ,'type',    'close' },...
+% % %             'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
+% % %     end
+% % % end
+% % % 
+% % % 
+% % % % Epoch the data 
+% % % EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); % epoch 0-1 seconds around event
 
 %% Spectral analysis
 
