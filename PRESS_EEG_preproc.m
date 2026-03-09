@@ -72,8 +72,12 @@ tasks    = {'rust', 'startle'};
 %  %% * Example filename:
 % filename = 'sub-110027_ses-M1-rust_task-Default_run-001_eeg.xdf.set'; 
 
+% Initiate cell variable to save which datasets are skipped for pre-processing
+skipped_sets = cell(2,1); 
+skip_i       = 1;
+
 % Loop over subjects, sessions and tasks (rest and startle)
-for subj_i = 25:length(subj_list) %1:length(subj_list)
+for subj_i = 1:length(subj_list)
     for sess_i = 1:length(sessions)
         for task_i = 1:length(tasks)
 
@@ -95,6 +99,8 @@ for subj_i = 25:length(subj_list) %1:length(subj_list)
             % if also not found with name 'rest', then skip
             if ~exist(fullPath, 'file')
                 fprintf('Skipping.\n', fullPath);
+                skipped_sets{skip_i} = sprintf('Not found: sub-%i_ses-%s-%s_task-Default_run-001_eeg.xdf.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i}); 
+                skip_i = skip_i + 1;
                 continue;  % skip to next iteration of your subject/session/task loop
             end
 
@@ -104,6 +110,8 @@ for subj_i = 25:length(subj_list) %1:length(subj_list)
             % -- Check if there is at least 20s of recorded data --
             if EEG.pnts/EEG.srate < 20
                 fprintf('Less than 20s recorded data in %s.\n Skipping.\n', fullPath);
+                skipped_sets{skip_i} = sprintf('<20s of data: sub-%i_ses-%s-%s_task-Default_run-001_eeg.xdf.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i}); 
+                skip_i = skip_i + 1;
                 continue;  % skip to next iteration of your subject/session/task loop
             end
 
@@ -200,6 +208,13 @@ for subj_i = 25:length(subj_list) %1:length(subj_list)
     end
 end
 
+% Save cell array with information about skipped datasets
+cd(path2save);
+writecell(skipped_sets, [path2save '/Overview_missing_EEGdata_PRESS_' char(datetime('today')) '.txt'], 'Delimiter',',');
+
+% change directory to where script is
+cd('/Users/fsmits2/MATLAB/Projects/PRESSsandbox')
+          
 
 
 %% Insert extra 'epoch' markers before cleaning
@@ -290,13 +305,13 @@ EEG = pop_chanedit(EEG, {'lookup','/Users/fsmits2/Downloads/eeglab2024.2/plugins
 
 % 1) initiate or load matrix to save noisy channels and rejected epochs
 % Check if file exists:
-fullPath_badch = fullfile([ path2save '/Overview_badchannels.txt']);
-fullPath_rejep = fullfile([ path2save '/Overview_rejected_epochs.txt']);
+fullPath_badch  = fullfile([ path2save '/Overview_badchannels.txt']);
+fullPath_rejdat = fullfile([ path2save '/Overview_rejecteddata.txt']);
 
 if ~exist(fullPath_badch, 'file')
     % When not found, create a new matrix
     fprintf('Bad channels file not found: %s. \nCreating new file.\n', fullPath_badch);
-    bdchns      = cell(length(subj_list),length(sessions)+1); 
+    bdchns      = cell(length(subj_list),length(sessions)*length(tasks)+1);
     bdchns(:,1) = num2cell(subj_list');
 else
     % When found, read existing matrix
@@ -304,14 +319,20 @@ else
     bdchns = table2cell( readtable( fullPath_badch ) );
 end
 
-if ~exist(fullPath_rejep, 'file')
+if ~exist(fullPath_rejdat, 'file')
     % When not found, create a new matrix
-    fprintf('Rejected epochs file not found: %s. \nCreating new file.\n', fullPath_rejep);
-    rej_data = [subj_list  nan( length(subj_list),length(sessions)*length(tasks) )];
+    fprintf('Rejected epochs file not found: %s. \nCreating new file.\n', fullPath_rejdat);
+    rej_data           = [subj_list  nan( length(subj_list),length(sessions)*length(tasks) )];
+    % Initiate cell variable to save visual evaluation of rejections by ASR
+    rej_data_eval      = cell(length(subj_list),length(sessions)*length(tasks)+1);
+    rej_data_eval(:,1) = num2cell(subj_list');
+    
 else
     % When found, read existing matrix
-    fprintf('Rejected epochs file found. %s. \nReading file.\n', fullPath_rejep);
-    rej_data = table2cell( readtable( fullPath_rejep ) );
+    fprintf('Rejected epochs file found. %s. \nReading file.\n', fullPath_rejdat);
+    rej_data = table2array( readtable( fullPath_rejdat ) );
+    % Load evaluation cell variable too
+    rej_data_eval = table2cell( readtable( fullfile([ path2save '/Evaluation_rejecteddata.txt']) ) );
 end
 
 
@@ -348,7 +369,8 @@ for subj_i = 1:length(subj_list)
             while m3 == -1
                 m3 = str2double( input('How many channels to leave out? ','s') );
             end
-            badchannels = {[]}; badchannrs = [];
+            badchannels = {[]}; badchannrs = [];  
+            badchan_idx = sess_i + task_i + (sess_i-1); % defines column in 'bdchns' where bad channel should be written
             if m3 > 0
                 for badchani = 1:m3
                     badchannels{badchani} = input(['Which channel to leave out? nr: ' num2str(badchani) ' ' ],'s') ;
@@ -401,19 +423,21 @@ for subj_i = 1:length(subj_list)
             rej_idx                  = sess_i + task_i + (sess_i-1); % defines column in 'rej_data' where percentage should be written
             rej_data(subj_i,rej_idx) = perc_rejected;
             EEG.epochdescription     = [ perc_rejected ' perecentage of data rejected by ASR. Rejections evaluated as acceptable by visual inspection? ' m4];
+            rej_data_eval{subj_i,rej_idx} = EEG.epochdescription;
 
-            % this is code is copied from when working from GUI. needed?
-            [ALLEEG EEG CURRENTSET]    = pop_newset(ALLEEG, EEG, CURRENTSET,'gui','off');
-            EEG = eeg_checkset( EEG );
-            [ALLEEG, EEG, CURRENTSET]  = eeg_store( ALLEEG, EEG );
+            % % % this is code is copied from when working from GUI. needed?
+            % % [ALLEEG EEG CURRENTSET]    = pop_newset(ALLEEG, EEG, CURRENTSET,'gui','off');
+            % % EEG = eeg_checkset( EEG );
+            % % [ALLEEG, EEG, CURRENTSET]  = eeg_store( ALLEEG, EEG );
 
             % Save clean dataset
             fprintf('\n****\nSave clean data subject %i session %s task %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
             SaveName = sprintf( '%i-%s-%s_clean.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
             EEG      = pop_saveset( EEG, 'filename',SaveName,'filepath', path2EEGsets );
             cd(path2save);
-            writecell(    bdchns,  [path2save '/Overview_badchannels_'     'PRESS_' char(datetime('today')) '.txt'], 'Delimiter',',');
-            writematrix(rej_data,  [path2save '/Overview_rejected_epochs_' 'PRESS_' char(datetime('today')) '.txt'], 'Delimiter',',');
+            writecell(       bdchns, [path2save '/Overview_badchannels.txt'], 'Delimiter',',');
+            writematrix(   rej_data, [path2save '/Overview_rejecteddata.txt'], 'Delimiter',',');
+            writecell(rej_data_eval, [path2save '/Evaluation_rejecteddata.txt'], 'Delimiter',',');
 
             m2 = 0;
             while m2 == 0
@@ -436,92 +460,5 @@ for subj_i = 1:length(subj_list)
     end
 end
 
-
-%% Epoch the data
-
-% Loop over subjects, sessions and tasks (rest and startle)
-for subj_i = 1:length(subj_list)
-    for sess_i = 1:length(sessions)
-        for task_i = 1:length(tasks)
-
-            % for startle task: you want epochs from -1800 to 150 ms around startle probes, in order to quantify and baseline-correct the maximum amplitude between 20 and 120 milliseconds after probe onset
-            % Approach startle reflex as an eyeblink ("poor man's ocular-EMG") and try to quantify the amplitude of the blinks 20-120 ms after the probe as
-            % detected by a blink algortihm for headband EEG such as Chang et al. 2014: https://doi.org/10.1016/j.cmpb.2015.10.011
-
-            % Epoch the data
-            EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); %epoch 0-1 seconds around event
-
-            % Save
-            fprintf('\n****\nSave epoched data subject %i session %s task %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
-            SaveName = sprintf( '%i-%s-%s_epoched.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
-            EEG      = pop_saveset( EEG, 'filename',SaveName,'filepath', path2save );
-
-        end
-    end
-end
-
-% % % % Add event after each 1-second into eyes-open or eyes-closed condition 
-% % % % 1) find event latencies of start
-% % % open_begin  = sort(find(strcmpi( {EEG.event.type}, 'open' ))); %Find the open/closed eyes onset triggers
-% % % close_begin = sort(find(strcmpi( {EEG.event.type}, 'close' )));
-% % % 
-% % % % eyes open: find start latencies
-% % % for i = 1:length(open_begin)
-% % %     open_period(i,1) = EEG.event(open_begin(i)).latency;
-% % %     open_period(i,2) = EEG.event(open_begin(i)).latency + 60*EEG.srate;
-% % % end
-% % % % eyes closed: find start latencies
-% % % for i = 1:length(close_begin)
-% % %     close_period(i,1) = EEG.event(close_begin(i)).latency;
-% % %     close_period(i,2) = EEG.event(close_begin(i)).latency + 60*EEG.srate;
-% % % end
-% % % 
-% % % % eyes open: insert events
-% % % for i = 1:length(open_begin)
-% % %     trggLats = open_period(i,1):EEG.srate:(open_period(i,2)-1*EEG.srate);
-% % %     for segi = 1:length(trggLats)
-% % %         EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
-% % %             'changefield',{ segi ,'type',    'open' },...
-% % %             'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
-% % %     end
-% % % end
-% % % 
-% % % % eyes closed: insert events
-% % % for i = 1:length(close_begin)
-% % %     trggLats = close_period(i,1):EEG.srate:(close_period(i,2)-1*EEG.srate);
-% % %     for segi = 1:length(trggLats)
-% % %         EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
-% % %             'changefield',{ segi ,'type',    'close' },...
-% % %             'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
-% % %     end
-% % % end
-% % % 
-% % % 
-% % % % Epoch the data 
-% % % EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); % epoch 0-1 seconds around event
-
-%% Spectral analysis
-
-% FFT over all channels
-dataX   = fft(EEG.data,[],2);
-dataPow = mean( abs(dataX) ,3);
-
-% vector of frequencies
-hz = linspace(0,EEG.srate,floor(EEG.pnts));
-
-% frequency cutoffs in Hz and indices
-frex = [ 1 30 ];
-fidx = dsearchn(hz',frex');
-
-addpath('/Volumes/home-3/Documents/Administratie/Congressen, cursussen en praatjes/Cursussen/Analyzing Neural Time Series data - alleen online/NTSA_spectral')
-
-figure(2), clf
-subplot(121)
-plot(hz(fidx(1):fidx(2)),squeeze(dataPow(1,fidx(1):fidx(2))),'b'), hold on
-plot(hz(fidx(1):fidx(2)),squeeze(dataPow(2,fidx(1):fidx(2))),'r'), hold on
-plot(hz(fidx(1):fidx(2)),squeeze(dataPow(3,fidx(1):fidx(2))),'g'), hold on
-plot(hz(fidx(1):fidx(2)),squeeze(dataPow(4,fidx(1):fidx(2))),'k')
-
-subplot(122)
-topoplotIndie(dataPow,EEG.chanlocs,'numcontour',0,'electrodes','off','shading','interp');
-title('Spectral power 1-30 Hz' )
+% change directory to where script is
+cd('/Users/fsmits2/MATLAB/Projects/PRESSsandbox')
