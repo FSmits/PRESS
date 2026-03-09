@@ -73,7 +73,7 @@ tasks    = {'rust', 'startle'};
 % filename = 'sub-110027_ses-M1-rust_task-Default_run-001_eeg.xdf.set'; 
 
 % Loop over subjects, sessions and tasks (rest and startle)
-for subj_i = 1:length(subj_list)
+for subj_i = 25:length(subj_list) %1:length(subj_list)
     for sess_i = 1:length(sessions)
         for task_i = 1:length(tasks)
 
@@ -84,12 +84,28 @@ for subj_i = 1:length(subj_list)
 
             % -- Check if file exists --
             if ~exist(fullPath, 'file')
-                fprintf('Not found: File %s.\n Skipping.\n', fullPath);
+                fprintf('Not found: File %s.\n', fullPath);
+                % Note: some resting-state EEG files are saved as "M1-rest" instead of "M1-rust"
+                if task_i == 1 && ~exist(filename, 'file')
+                    % redefine full filename
+                    filename = sprintf('sub-%i_ses-%s-%s_task-Default_run-001_eeg.xdf.set', subj_list(subj_i), sessions{sess_i}, 'rest');
+                    fullPath = fullfile(path2EEGsets, filename);
+                end
+            end
+            % if also not found with name 'rest', then skip
+            if ~exist(fullPath, 'file')
+                fprintf('Skipping.\n', fullPath);
                 continue;  % skip to next iteration of your subject/session/task loop
             end
 
             % -- Load raw EEG set --
             EEG      = pop_loadset('filename',filename,'filepath',path2EEGsets);
+
+            % -- Check if there is at least 20s of recorded data --
+            if EEG.pnts/EEG.srate < 20
+                fprintf('Less than 20s recorded data in %s.\n Skipping.\n', fullPath);
+                continue;  % skip to next iteration of your subject/session/task loop
+            end
 
             %  %% * if needed: View set characteristics or plot for visual inspection
             % disp(EEG);
