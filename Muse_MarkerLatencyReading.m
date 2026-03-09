@@ -3,26 +3,6 @@ clear; close all
 addpath '/Users/fsmits2/Downloads/'
 addpath '/Users/fsmits2/Downloads/eeglab2024.2'
 
-% SubjID recorded with Muse 2022 or Muse 2025 device at T0 (Meting 1), T1 (meting2) and t3 (meting 4) (list by copy because change directory (cd) function does not work for RFS):
-id_M1_muse2022 = [110002 110004 110005 110007 110009 ...
-    110011 110013 110016 110018 110019 110021 ...
-    110023 110025 110027 110030];
-id_M1_muse2025 = [110001 110003 110006 110008 110010 ...
-    110012 110014 110015 110017 110020 110022, ...
-    110024 110026 110028 110029];
-id_M2_muse2022 = [110003, 110004, 110006, 110007, ...
-    110008, 110009, 110011, 110023, 110024, ...
-    110026, 110027, 110028];
-id_M2_muse2025 = [110005, 110010, 110013, 110014, ...
-    110015, 110017, 110018, 110020, 110021, ...
-    110022, 110025, 110029];
-id_M4_muse2022 = [110004, 110007, 110014, 110018, ...
-    110019, 110021, 110022, 110023, 110024, ...
-    110025, 110027, 110028, 110029, 110030];
-id_M4_muse2025 = [110003, 110005, 110006, 110008, ...
-    110009, 110010, 110011, 110012, 110013, ...
-    110015, 110016, 110017, 110020, 110026];
-
 % SubjID recorded with Muse 2022 or Muse 2025 device at T0 (Meting 1), T1 (meting2) and t3 (meting 4) (list by copy because change directory (cd) function does not work for RFS so cannot read files?): 
 field1 = 'muse2022';
 value1 = {[110002 110004 110005 110007 110009 110011 110013 110016 110018 ...
@@ -56,7 +36,7 @@ recordings = {{'rust' 'rest'}, {'startle'}};
 % change filename according to the file you want to load
 prefix = '/Users/fsmits2/Networkshares/Onderzoek/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/0. Ruwe data (niet in werken)/Muse/';
 
-% Search all files in all subfolders
+% Search all files in all subfolders (depending on connection, this may take a while)
 files = dir(fullfile(prefix,'**','*._task-Default_run-001_eeg.xdf')); % example for EEGLAB files
 
 % Loop over subjects and recordings
@@ -73,7 +53,7 @@ for subj_i = 1:length(subj_list)
             elseif find(subjid == muse_group(sess_i).muse2025) > 0
                 muse_folder = ['Muse 2025_' session_foldernames{sess_i} '/'];
             else
-                print('Problem: this subj id is not found in any Muse folder')
+                disp('Problem: this subj id is not found in any Muse folder')
             end
 
             % define name of selected recording
@@ -92,7 +72,7 @@ for subj_i = 1:length(subj_list)
                 if rec_i == 1 && ~exist(filename, 'file')
                     recname = ['ses-' sessions{sess_i} '-' recordings{rec_i}{2}];
                     % redefine full filename
-                    filename = fullfile( prefix, muse_folder, subjid, recname, 'eeg', [char(subjid) '_' recname '_task-Default_run-001_eeg.xdf']);
+                    filename = fullfile( prefix, muse_folder, ['sub-' num2str(subjid)], recname, 'eeg', ['sub-' num2str(subjid) '_' recname '_task-Default_run-001_eeg.xdf']);
                 end
             end
             if ~exist(filename, 'file')
@@ -131,7 +111,7 @@ for subj_i = 1:length(subj_list)
             timestamps_delta = streams{stream_marker}.time_stamps_unix - Muse_time2;
 
             % start EEGlab
-            eeglab
+            eeglab('nogui');
             % If using eeglab GUI:
             % - Stream name to import: Muse
             % - datatset name: [free choice]
