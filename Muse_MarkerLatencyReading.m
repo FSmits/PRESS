@@ -3,18 +3,52 @@ clear; close all
 addpath '/Users/fsmits2/Downloads/'
 addpath '/Users/fsmits2/Downloads/eeglab2024.2'
 
-% SubjID recorded with Muse 2022 device at T0 (Meting 1) (list by copy because change directory (cd) function does not work for RFS):
-id_t0_muse2022 = ["sub-110002" "sub-110004" "sub-110005" "sub-110007" "sub-110009" ...
-    "sub-110011" "sub-110013" "sub-110016" "sub-110018" "sub-110019" "sub-110021" ...
-    "sub-110023" "sub-110025" "sub-110027" "sub-110030"];
-id_t0_muse2025 = ["sub-110001" "sub-110003" "sub-110006" "sub-110008" "sub-110010" ...
-    "sub-110012" "sub-110014" "sub-110015" "sub-110017" "sub-110020" "sub-110022"...
-    "sub-110024" "sub-110026" "sub-110028" "sub-110029"];
-% merge
-id = [id_t0_muse2022 id_t0_muse2025];
+% SubjID recorded with Muse 2022 or Muse 2025 device at T0 (Meting 1), T1 (meting2) and t3 (meting 4) (list by copy because change directory (cd) function does not work for RFS):
+id_M1_muse2022 = [110002 110004 110005 110007 110009 ...
+    110011 110013 110016 110018 110019 110021 ...
+    110023 110025 110027 110030];
+id_M1_muse2025 = [110001 110003 110006 110008 110010 ...
+    110012 110014 110015 110017 110020 110022, ...
+    110024 110026 110028 110029];
+id_M2_muse2022 = [110003, 110004, 110006, 110007, ...
+    110008, 110009, 110011, 110023, 110024, ...
+    110026, 110027, 110028];
+id_M2_muse2025 = [110005, 110010, 110013, 110014, ...
+    110015, 110017, 110018, 110020, 110021, ...
+    110022, 110025, 110029];
+id_M4_muse2022 = [110004, 110007, 110014, 110018, ...
+    110019, 110021, 110022, 110023, 110024, ...
+    110025, 110027, 110028, 110029, 110030];
+id_M4_muse2025 = [110003, 110005, 110006, 110008, ...
+    110009, 110010, 110011, 110012, 110013, ...
+    110015, 110016, 110017, 110020, 110026];
+
+% SubjID recorded with Muse 2022 or Muse 2025 device at T0 (Meting 1), T1 (meting2) and t3 (meting 4) (list by copy because change directory (cd) function does not work for RFS so cannot read files?): 
+field1 = 'muse2022';
+value1 = {[110002 110004 110005 110007 110009 110011 110013 110016 110018 ...
+    110019 110021 110023 110025 110027 110030]; % subjIDs M1 muse2022
+    [110003 110004 110006 110007 110008 110009 110011 110023 110024 ...
+    110026 110027 110028]; % subjIDs M2 muse2022
+    [110004 110007 110014 110018 110019 110021 110022 110023 110024 ...
+    110025 110027 110028 110029 110030]}; % subjIDs M4 muse2022
+field2 = 'muse2025';
+value2 = {[110001 110003 110006 110008 110010 110012 110014 110015 110017 ...
+    110020 110022 110024 110026 110028 110029]; % subjIDs M1 muse2025
+    [110005 110010 110013 110014 110015 110017 110018 110020 110021 ...
+    110022 110025 110029]; % subjIDs M2 muse2025
+    [110003 110005 110006 110008 110009 110010 110011 110012 110013 ...
+    110015 110016 110017 110020 110026];}; % subjIDs M4 muse2025
+muse_group = struct(field1, value1, field2, value2);
+
+% enter subject names (extract from key file where subject IDs are linked)
+path2RFS     = '/Users/fsmits2/Networkshares/Onderzoek/Groep Geuze/25U-0078_PRESS/'; % Enter your path to RFS. End with slash ('/' on Mac, '\' on Windows)
+key_filename = [path2RFS 'E_ResearchData/2_ResearchData/' 'SubjectID_koppelbestand_Castor-PVT-Garmin.csv'];
+subj_tab     = readtable( key_filename, 'ReadVariableNames', 1);
+subj_list    = table2array( subj_tab(:,1) );
 
 % define session names
-sessions = {'M1', 'M2', 'M4'};
+sessions            = {'M1', 'M2', 'M4'};
+session_foldernames = {'T0-Meting1', 'T1-Meting2', 'T3-Meting4'};
 
 % define the recordings (measurements)
 recordings = {{'rust' 'rest'}, {'startle'}};
@@ -22,19 +56,22 @@ recordings = {{'rust' 'rest'}, {'startle'}};
 % change filename according to the file you want to load
 prefix = '/Users/fsmits2/Networkshares/Onderzoek/Groep Geuze/25U-0078_PRESS/E_ResearchData/2_ResearchData/0. Ruwe data (niet in werken)/Muse/';
 
+% Search all files in all subfolders
+files = dir(fullfile(prefix,'**','*._task-Default_run-001_eeg.xdf')); % example for EEGLAB files
+
 % Loop over subjects and recordings
-for subj_i = 1:length(id)
-    for sess_i = 1:length (sessions)
+for subj_i = 1:length(subj_list)
+    for sess_i = 1:length(sessions)
         for rec_i = 1:length(recordings)
 
             % find current subject-id
-            subjid = id(subj_i);
+            subjid = subj_list(subj_i);
 
-            % Find the Muse folder with subject's data (2022 or 2025)
-            if any(strcmpi(subjid, id_t0_muse2022))
-                muse_folder = 'Muse 2022_T0-Meting1/';
-            elseif any(strcmpi(subjid, id_t0_muse2025))
-                muse_folder = 'Muse 2025_T0-Meting1/';
+            % find in which muse-subfolder dataset is stored
+            if find(subjid == muse_group(sess_i).muse2022) > 0
+                muse_folder = ['Muse 2022_' session_foldernames{sess_i} '/'];
+            elseif find(subjid == muse_group(sess_i).muse2025) > 0
+                muse_folder = ['Muse 2025_' session_foldernames{sess_i} '/'];
             else
                 print('Problem: this subj id is not found in any Muse folder')
             end
@@ -43,26 +80,24 @@ for subj_i = 1:length(id)
             recname = ['ses-' sessions{sess_i} '-' recordings{rec_i}{1}];
 
             % print current subject-id and recording to command window
-            disp([subjid, recname])
+            disp([num2str(subjid) ' ' recname])
 
             % define full filename
-            filename = fullfile( prefix, muse_folder, subjid, recname, 'eeg', [char(subjid) '_' recname '_task-Default_run-001_eeg.xdf']);
+            filename = fullfile( prefix, muse_folder, ['sub-' num2str(subjid)], recname, 'eeg', ['sub-' num2str(subjid) '_' recname '_task-Default_run-001_eeg.xdf']);
 
             % check if file exists
-            if exist(filename, 'file') > 0
-                disp('file exists')
+            if ~exist(filename, 'file')
+                fprintf('Not found: File %s.\n', filename);
                 % Note: some resting-state EEG files are saved as "M1-rest" instead of "M1-rust"
-            elseif rec_i == 1 && exist(filename, 'file') == 0
-                recname = ['ses-' sessions{sess_i} '-' recordings{rec_i}{2}];
-                % define full filename
-                filename = fullfile( prefix, muse_folder, subjid, recname, 'eeg', [char(subjid) '_' recname '_task-Default_run-001_eeg.xdf']);
-                if exist(filename, 'file') > 0
-                    disp('file exists')
-                else
-                    disp('file does not exist')
+                if rec_i == 1 && ~exist(filename, 'file')
+                    recname = ['ses-' sessions{sess_i} '-' recordings{rec_i}{2}];
+                    % redefine full filename
+                    filename = fullfile( prefix, muse_folder, subjid, recname, 'eeg', [char(subjid) '_' recname '_task-Default_run-001_eeg.xdf']);
                 end
-            else
-                disp('file does not exist')
+            end
+            if ~exist(filename, 'file')
+                fprintf('Skipping.\n', filename);
+                continue;  % skip to next iteration of your subject/session/task loop
             end
 
 
@@ -130,5 +165,5 @@ for subj_i = 1:length(id)
             clear EEG; close all
 
         end
-        enda
+    end
 end
