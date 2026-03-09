@@ -15,7 +15,7 @@
 %
 % Notes: 
 % 1. Cleaning based on paper: Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG. In 2021 IEEE International Conference on Bioinformatics and Biomedicine (BIBM) (pp. 1-5). IEEE. https://doi.org/10.1109/BIBM52615.2021.9669415
-% 2. No re-referencing possible due to low no. channels; (or yes?)
+% 2. No re-referencing due to low no. channels and noisy re-referencing electrodes that also contain brain data, even though re-referencing to TP9 and TP10 is advised when interested in frontal activity by: https://doi.org/10.1101/2021.11.02.466989 Cannard, C., Wahbeh, H., & Delorme, A. (2021, December). Validating the wearable MUSE headset for EEG spectral analysis and Frontal Alpha Asymmetry. IEEE.
 % 3. No downsampling: not needed due to low sampling rate;
 % 4. No ICA possible due to low no. channels
 %
@@ -80,10 +80,11 @@ for subj_i = 1:length(subj_list)
             fprintf('\n****\nStart processing subject %i session %s %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
             filename = sprintf('sub-%i_ses-%s-%s_task-Default_run-001_eeg.xdf.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
 
-            % -- Check if file exists --
             fullPath = fullfile(path2EEGsets, filename);
+
+            % -- Check if file exists --
             if ~exist(fullPath, 'file')
-                fprintf('File %s not found. Skipping.\n', fullPath);
+                fprintf('Not found: File %s.\n Skipping.\n', fullPath);
                 continue;  % skip to next iteration of your subject/session/task loop
             end
 
@@ -137,7 +138,9 @@ for subj_i = 1:length(subj_list)
                     end
                 end
                 % b) Subtract 100 ms of the pre-pulse latencies (latency of pre-pulse was recorded at the same time of probe, while presented 100 ms earlier)
-                EEG.event(pp_idx) = arrayfun(@(e) setfield(e, 'latency', e.latency - 0.1*EEG.srate), EEG.event(pp_idx));
+                if any(pp_idx > 0 ) % only if pre-pulse events are found in the data
+                    EEG.event(pp_idx) = arrayfun(@(e) setfield(e, 'latency', e.latency - 0.1*EEG.srate), EEG.event(pp_idx));
+                end
                 % Clean up event structure
                 EEG = eeg_checkset(EEG, 'eventconsistency');
             end
@@ -162,13 +165,7 @@ for subj_i = 1:length(subj_list)
                 extra_time = 5; % startle paradigm: maintain 5 seconds of data after last event
             end
             % trim dataset
-            EEG = pop_select(EEG, 'time', [start_time end_time+extra_time]);
-
-            % % -- Re-reference --
-            % % Re-reference to avg mastoids when interested in frontal activity - advise by: https://doi.org/10.1101/2021.11.02.466989 Cannard, C., Wahbeh, H., & Delorme, A. (2021, December). Validating the wearable MUSE headset for EEG spectral analysis and Frontal Alpha Asymmetry. IEEE.
-            % mastoid1 = find(strcmpi( {EEG.chanlocs.labels}, 'TP9' ));
-            % mastoid2 = find(strcmpi( {EEG.chanlocs.labels}, 'TP10' ));
-            % EEG      = pop_reref( EEG, [mastoid1 mastoid2]); %re-references to the average of 2 channels << check if this is right, or put the "real" formula here: Vref = ½(vLM + vRM) where Vref is the reference signal and vLM and vRM are the signals for the left and right mastoid channels respectively
+            EEG = pop_select(EEG, 'time', [start_time-2 end_time+extra_time]); %trim from 2 seconds before first event to 'extra time' seconds after last event
 
             % -- Filter -- 
             % Filter settings: Delorme 2021 uses lowpass filter at 40 Hz. Here, we likewise apply no highpass filter and we lowpass filter at 34 Hz for this is the maximum that we can apply universally to all datasets because some datasets have a reduced sampling rate of 69.9, and filter requires at least double the sampling rate.
@@ -189,10 +186,9 @@ end
 
 
 
-%% Insert markers and epoch
+%% Insert extra 'epoch' markers before cleaning
 
-% Define condition and epoch lengths (in seconds)
-cond_length  = 60; %60 seconds (1 minute)
+% Define epoch lengths (in seconds)
 epoch_length = 2; %2 seconds
 
 % Loop over subjects, sessions and tasks (rest and startle)
@@ -200,61 +196,68 @@ for subj_i = 1:length(subj_list)
     for sess_i = 1:length(sessions)
         for task_i = 1:length(tasks)
 
-            % - - Create epoch markers - - 
-            if strcmp(tasks{task_i}, 'rust') %here: only needed for rest-EEG
-                % To divide long-duration recordings (e.g., resting-state EEG) into epochs, add trigger events after each (f.e.) 2-second period
-                conds = {'open','close'};
-                for ci = 1:numel(conds)
-                    cond = conds{ci};
-                    starts = find(strcmpi({EEG.event.type}, cond));
-                    for s = 1:length(starts)
-                        period     = EEG.event(starts(s)).latency + [0 cond_length*EEG.srate];
-                        event_lats = period(1):(EEG.srate*2):(period(2)-EEG.srate);
-                        % append events
-                        for segi = 1:length(event_lats)
-                            new_event = EEG.event(1); %copy template of event to have all the struct-fields EEGlab requires
-                            new_event.type    = cond; %overwrite event type
-                            new_event.latency = event_lats(segi);  %overwrite event latency, in samples
-                            EEG.event(end+1)  = new_event; %append
-                        end
-                    end
-                end
+            filename = sprintf( '%i-%s-%s_trimmed_filtered.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
 
-                % Make sure events are sorted after inserting
-                EEG = eeg_checkset(EEG, 'eventconsistency'); 
-
-                % Epoch the data
-                EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); %epoch 0-1 seconds around event
-
+             % -- Check if file exists --
+            fullPath = fullfile(path2save, filename);
+            if ~exist(fullPath, 'file')
+                fprintf('Not found: File %s.\n Skipping.\n', fullPath);
+                continue;  % skip to next iteration of your subject/session/task loop
             end
 
-            if strcmp(tasks{task_i}, 'rust') %here: only needed for rest-EEG
-                % To divide long-duration recordings (e.g., resting-state EEG) into epochs, add trigger events after each (f.e.) 2-second period
-                conds = {'open','close'};
-                for ci = 1:numel(conds)
-                    cond = conds{ci};
-                    starts = find(strcmpi({EEG.event.type}, cond));
-                    for s = 1:length(starts)
-                        period     = EEG.event(starts(s)).latency + [0 cond_length*EEG.srate];
-                        event_lats = period(1):(EEG.srate*2):(period(2)-EEG.srate);
-                        % append events
-                        for segi = 1:length(event_lats)
-                            new_event = EEG.event(1); %copy template of event to have all the struct-fields EEGlab requires
-                            new_event.type    = cond; %overwrite event type
-                            new_event.latency = event_lats(segi);  %overwrite event latency, in samples
-                            EEG.event(end+1)  = new_event; %append
-                        end
+            % Load EEG set
+            EEG = pop_loadset('filename', filename , 'filepath', path2save);
+
+            % Define condition event names per task
+            if strcmp(tasks{task_i}, 'rust')                 
+                conds  = {'open','close'};
+            elseif strcmp(tasks{task_i}, 'startle') 
+                conds = {'habituation','probe_pp','probe_solo'};
+            end
+
+            % Make sure events are sorted before inserting new events
+            EEG = eeg_checkset(EEG, 'eventconsistency');
+
+            % Append events
+            for ci = 1:numel(conds)
+                % find events belonging to conditions of interest
+                cond = conds{ci};
+                starts = find(strcmpi({EEG.event.type}, cond));
+                for s = 1:length(starts)
+                    current_event = starts(s);
+                    % skip if it is the last event in dataset
+                    if current_event == length(EEG.event)
+                        continue
+                    end
+                    % find latencies of this event and next event
+                    start_lat  = EEG.event(current_event).latency;
+                    next_lat   = EEG.event(current_event + 1).latency;
+                    event_lats = start_lat:(EEG.srate*epoch_length):(next_lat-EEG.srate);
+                    % append events
+                    for segi = 2:length(event_lats) %start from 2, because first event already exists (original trigger event)
+                        new_event         = EEG.event(1); %copy template of event to have all the struct-fields EEGlab requires
+                        new_event.type    = [cond '+' num2str((segi-1)*epoch_length) 'sec']; %overwrite event type and add time lag to original event
+                        new_event.latency = event_lats(segi);  %overwrite event latency, in samples
+                        EEG.event(end+1)  = new_event; %append
                     end
                 end
-
-                % Make sure events are sorted after inserting
-                EEG = eeg_checkset(EEG, 'eventconsistency'); 
-
-                % Epoch the data
-                EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); %epoch 0-1 seconds around event
-
             end
-            
+
+            % Make sure events are sorted after inserting
+            EEG = eeg_checkset(EEG, 'eventconsistency');
+
+            % % % % Epoch the data
+            % % % EEG  = pop_epoch( EEG, {'open' 'close'},  [0  2], 'epochinfo', 'yes'); %epoch 0-2 seconds around event
+
+            % -- Save processed EEG set --
+            fprintf('\n****\nSaving processed subject %i session %s %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
+            SaveName = sprintf( '%i-%s-%s_epochsmarked.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
+            EEG      = pop_saveset( EEG,'filename',SaveName,'filepath', path2save );
+
+             % -- Clear this EEG set from workspace before iterating to the next --
+            clear EEG
+            ALLEEG(1:end) = [];
+
 
         end
     end
@@ -281,7 +284,7 @@ if ~exist(fullPath_badch, 'file')
     bdchns(:,1) = num2cell(subj_list');
 else
     % When found, read existing matrix
-    fprintf('Bad channels file found! %s. \nReading file.\n', fullPath_badch);
+    fprintf('Bad channels file found. %s. \nReading file.\n', fullPath_badch);
     bdchns = table2cell( readtable( fullPath_badch ) );
 end
 
@@ -291,7 +294,7 @@ if ~exist(fullPath_rejep, 'file')
     rej_data = [subj_list  nan( length(subj_list),length(sessions)*length(tasks) )];
 else
     % When found, read existing matrix
-    fprintf('Rejected epochs file found! %s. \nReading file.\n', fullPath_rejep);
+    fprintf('Rejected epochs file found. %s. \nReading file.\n', fullPath_rejep);
     rej_data = table2cell( readtable( fullPath_rejep ) );
 end
 
@@ -301,7 +304,7 @@ for subj_i = 1:length(subj_list)
     for sess_i = 1:length(sessions)
         for task_i = 1:length(tasks)
 
-            filename = sprintf( '%i-%s-%s_epoched.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
+            filename = sprintf( '%i-%s-%s_epochsmarked.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
 
             % Load EEG set
             EEG = pop_loadset('filename', filename , 'filepath', path2save);
@@ -313,14 +316,12 @@ for subj_i = 1:length(subj_list)
                 chansd = std(EEG.data(chan, :)');
                 fprintf('%f = STD channel %s.\n', chansd, EEG.chanlocs(chan).labels);
                 % - — Compute PSD - - 
-                % Concatenate epochs
-                signal = reshape(EEG.data(chan,:,:), [], 1); %squeeze over timepoints × trials
                 % Compute mean bandpower per channel in PSD 5-34 Hz (34 Hz is based on filter freq, and 5 Hz is based on Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG.)
                 % Delorme et al. use mean bandpower >25 log10(µV2)/Hz as threshold.
-                [pxx,f] = pwelch(signal, window, 0, [], EEG.srate);
+                [pxx,f] = pwelch(EEG.data, window, 0, [], EEG.srate);
                 idx = f >= 5 & f <= 34;
                 band_power = mean(log10(pxx(idx)));
-                fprintf('%f = mean PSD channel %s.\n', band_power, EEG.chanlocs(chan).labels);
+                fprintf('%f = mean PSD channel %s log10(µV2)/Hz.\n Delorme 2021 threshold: 25 log10(µV2)/Hz', band_power, EEG.chanlocs(chan).labels);
             end
             
             % Visually check noisy channels in plot and decide to keep or reject
@@ -343,17 +344,12 @@ for subj_i = 1:length(subj_list)
             end
             EEG.eventdescription = { {'Too much noise in channels: '} badchannels };
 
-            % Leave noisy channels (previously detected and saved) out of consideration for epoch rejection
-            badchannels = bdchns{subj_i, sess_i+1};
-            chanarray   = 1:length(EEG.chanlocs);
-            if sum( strcmpi( badchannels, '0') ) < 1
-                badchans = regexp(badchannels, ',', 'split');
-                badchannrs = [];
-                for badchani = 1:length(badchans)
-                    badchannrs(badchani) = find( strcmpi( badchans{badchani}, {EEG.chanlocs.labels} ));
-                end
-                chanarray(badchannrs) = []; % remove the noisy channels from chanarray
-            end
+            % Save original data (with all channels)
+            EEG_orig = EEG;
+
+            % Remove bad channels
+            EEG = pop_select(EEG,'nochannel', badchannels);
+
 
             % - - Semi-automatic artifact rejection - -
             % Artifact Subspace Reconstruction (ASR)
@@ -361,11 +357,8 @@ for subj_i = 1:length(subj_list)
             % Paramaters based on musemonitor code (https://github.com/sccn/eeglab_musemonitor_plugin/blob/master/pop_musemonitor.m)
             % BurstCriterion value: 11 ("The best method is the ASR method with a parameter of 11.")
             
-            % Create continuous signal from epoched data (required for ASR) - -
-            EEG = eeg_epoch2continuous(EEG);
-            % Save original data (without rejected segements)
-            EEG_orig = EEG;
-            % Artifact rejection with ASR in repair mode (no removal of data, just get suggestion of what should be removed):
+            % Note: ASR requires continuous signal (if epoched, use: EEG = eeg_epoch2continuous(EEG); )
+            % Artifact rejection with ASR in repair mode (no removal of channels and see what segments are rejected):
             EEG = clean_artifacts(EEG, ...
                 'FlatlineCriterion','off', ...
                 'ChannelCriterion','off', ...  % prevent automatic removal of channels
@@ -374,7 +367,7 @@ for subj_i = 1:length(subj_list)
                 'BurstCriterion',11, ... 
                 'BurstCriterionRefMaxBadChns','off', ...               
                 'WindowCriterion',0.5, ...
-                'BurstRejection','off', ... % prevent automatic removal of segments
+                'BurstRejection','off', ... 
                 'Distance','Euclidian');
 
             % Visually check bad segments in plot and decide whether to reject all (no other option, just verification of the ASR cleaning method)
