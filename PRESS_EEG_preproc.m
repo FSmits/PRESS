@@ -215,7 +215,7 @@ writecell(skipped_sets, [path2save '/Overview_missing_EEGdata_PRESS_' char(datet
 % change directory to where script is
 cd('/Users/fsmits2/MATLAB/Projects/PRESSsandbox')
           
-
+AANPASSING
 
 %% Insert extra 'epoch' markers before cleaning
 
