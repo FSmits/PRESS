@@ -66,6 +66,9 @@ subj_list    = table2array( subj_tab(:,1) );
 sessions = {'M1', 'M2', 'M4'};
 tasks    = {'rust', 'startle'};
 
+% Define epoch lengths (in seconds)
+epoch_length = 1; %in seconds
+
 
 %% Load data, trim, filter
 
@@ -215,12 +218,8 @@ writecell(skipped_sets, [path2save '/Overview_missing_EEGdata_PRESS_' char(datet
 % change directory to where script is
 cd('/Users/fsmits2/MATLAB/Projects/PRESSsandbox')
           
-AANPASSING
 
 %% Insert extra 'epoch' markers before cleaning
-
-% Define epoch lengths (in seconds)
-epoch_length = 2; %2 seconds
 
 % Loop over subjects, sessions and tasks (rest and startle)
 for subj_i = 1:length(subj_list)
@@ -249,7 +248,7 @@ for subj_i = 1:length(subj_list)
             % Make sure events are sorted before inserting new events
             EEG = eeg_checkset(EEG, 'eventconsistency');
 
-            % Append events
+            % -- Append events --
             for ci = 1:numel(conds)
                 % find events belonging to conditions of interest
                 cond = conds{ci};
@@ -298,11 +297,6 @@ end
 %% Clean data
 % Evaluate and remove if necessary bad channels and epochs 
 
-% 0) Import a channel location file 
-% (needed? for Artifact Subspace Reconstruction, ASR)
-EEG = pop_chanedit(EEG, {'lookup','/Users/fsmits2/Downloads/eeglab2024.2/plugins/dipfit/standard_BEM/elec/standard_1005.elc'});
-
-
 % 1) initiate or load matrix to save noisy channels and rejected epochs
 % Check if file exists:
 fullPath_badch  = fullfile([ path2save '/Overview_badchannels.txt']);
@@ -339,26 +333,42 @@ end
 % 2) Loop over files
 for subj_i = 1:length(subj_list)
     for sess_i = 1:length(sessions)
-        for task_i = 1:length(tasks)
+        for task_i = 1 %1:length(tasks)
 
             filename = sprintf( '%i-%s-%s_epochsmarked.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
+
+             % -- Check if file exists --
+            fullPath = fullfile(path2save, filename);
+            if ~exist(fullPath, 'file')
+                fprintf('Not found: File %s.\n Skipping.\n', fullPath);
+                continue;  % skip to next iteration of your subject/session/task loop
+            end
 
             % Load EEG set
             EEG = pop_loadset('filename', filename , 'filepath', path2save);
 
-            % Detect noisy channels
+            % % Import a channel location file
+            % % (needed? for Artifact Subspace Reconstruction, ASR)
+            % EEG = pop_chanedit(EEG, {'lookup','/Users/fsmits2/Downloads/eeglab2024.2/plugins/dipfit/standard_BEM/elec/standard_1005.elc'});
+
+
+            % -- Detect noisy channels --
             pop_eegplot( EEG, 1, 1, 1);
             for chan = 1:EEG.nbchan
-                % - - Compute standard deviation - -                
+                % - Compute standard deviation              
                 chansd = std(EEG.data(chan, :)');
                 fprintf('%f = STD channel %s.\n', chansd, EEG.chanlocs(chan).labels);
-                % - — Compute PSD - - 
+                % - Compute PSD
                 % Compute mean bandpower per channel in PSD 5-34 Hz (34 Hz is based on filter freq, and 5 Hz is based on Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG.)
                 % Delorme et al. use mean bandpower >25 log10(µV2)/Hz as threshold.
-                [pxx,f] = pwelch(EEG.data, window, 0, [], EEG.srate);
+                % to suppress pop-up window, pass the window numbers to pwelch
+                window      = min(EEG.srate, size(EEG.data,2));
+                winvec      = hann(window); 
+                EEG_datauV  = EEG.data * 1e6;   % convert to µV
+                [pxx,f]     = pwelch(EEG_datauV(chan,:)', winvec, 0, [], EEG.srate); %remember to transpose EEG.data, because pwelch function expects an array of timepoints x channels, while EEG.data is structured as channels x timepoints.
                 idx = f >= 5 & f <= 34;
                 band_power = mean(log10(pxx(idx)));
-                fprintf('%f = mean PSD channel %s log10(µV2)/Hz.\n Delorme 2021 threshold: 25 log10(µV2)/Hz', band_power, EEG.chanlocs(chan).labels);
+                fprintf('%f log10(µV2)/Hz = mean PSD channel %s.\n Delorme 2021 threshold: 25 log10(µV2)/Hz \n', band_power, EEG.chanlocs(chan).labels);
             end
             
             % Visually check noisy channels in plot and decide to keep or reject
@@ -377,63 +387,104 @@ for subj_i = 1:length(subj_list)
                     badchannrs(badchani)  = find( strcmpi( badchannels{badchani}, {EEG.chanlocs.labels} ));
                 end
                 bdchns{subj_i,sess_i+1}  = string(badchannels);
+                EEG.eventdescription = { {'Too much noise in channels: '} badchannels };
+                % Remove bad channels
+                EEG = pop_select(EEG,'nochannel', badchannels);
             else
                 bdchns{subj_i,sess_i+1}  = '0';
-            end
-            EEG.eventdescription = { {'Too much noise in channels: '} badchannels };
+            end        
 
-            % Save original data (with all channels)
+            % Save original data (before artifact rejection)
             EEG_orig = EEG;
 
-            % Remove bad channels
-            EEG = pop_select(EEG,'nochannel', badchannels);
-
-
-            % - - Semi-automatic artifact rejection - -
+            % -- Semi-automatic artifact rejection --
             % Artifact Subspace Reconstruction (ASR)
-            % Method (ASR) based on Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG. In 2021 IEEE International Conference on Bioinformatics and Biomedicine (BIBM) (pp. 1-5). IEEE. https://doi.org/10.1109/BIBM52615.2021.9669415
+            % Choice for ASR method is based on Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG. In 2021 IEEE International Conference on Bioinformatics and Biomedicine (BIBM) (pp. 1-5). IEEE. https://doi.org/10.1109/BIBM52615.2021.9669415
             % Paramaters based on musemonitor code (https://github.com/sccn/eeglab_musemonitor_plugin/blob/master/pop_musemonitor.m)
-            % BurstCriterion value: 11 ("The best method is the ASR method with a parameter of 11.")
+            % BurstCriterion value: 11 (from above paper: "The best method is the ASR method with a parameter of 11.")
             
             % Note: ASR requires continuous signal (if epoched, use: EEG = eeg_epoch2continuous(EEG); )
-            % Artifact rejection with ASR in repair mode (no removal of channels and see what segments are rejected):
-            EEG = clean_artifacts(EEG, ...
+            % Check ASR - step 1: Run once with reconstruction: Artifact rejection with ASR in repair mode (see what segments are detected):
+            % Note: this will not produce the exact same result as final clean_artifacts code below to segments, because of difference in some parameters here that prevent data rejection (needed for visualisation).
+            EEG_rec = clean_artifacts(EEG, ...
                 'FlatlineCriterion','off', ...
                 'ChannelCriterion','off', ...  % prevent automatic removal of channels
-                'LineNoiseCriterion',5, ...
+                'LineNoiseCriterion','off', ... % alternative (more stringent): 'LineNoiseCriterion',5, ...
                 'Highpass',[0.25 0.75], ...
-                'BurstCriterion',11, ... 
+                'BurstCriterion',11, ... % alternative (less stringent): 'BurstCriterion',25, ...
                 'BurstCriterionRefMaxBadChns','off', ...               
-                'WindowCriterion',0.5, ...
-                'BurstRejection','off', ... 
+                'WindowCriterion','off', ...
+                'BurstRejection','off', ...  
                 'Distance','Euclidian');
 
-            % Visually check bad segments in plot and decide whether to reject all (no other option, just verification of the ASR cleaning method)
-            % Visualize artifacts:
-            vis_artifacts(EEG, EEG_orig, 'WindowLength', 50, 'DisplayMode', 'both');
-            % Evaluate ASR segment rejection (check if or not ASR also rejects clean segments, f.e. high amplitude alpha oscillations can be confused for noise) 
-            m4 = 'N/A';
-            while ~strcmpi(m4,'yes') && ~strcmpi(m4,'no')
-                m4 = input('Marked segments rejection is OK? Type [yes] or [no]: ','s');
-            end
+            % % Check ASR - step 2 (optional): Visually check detected bad segments in plot (just verification of the ASR cleaning method)
+            % % Visualize artifacts and input your evaluation:
+            % m4 = 'N/A';
+            % if EEG_rec.pnts == EEG_orig.pnts
+            %     vis_artifacts(EEG_rec, EEG_orig, 'WindowLength', 50, 'DisplayMode', 'both');
+            %     % Evaluate ASR segment rejection (check if or not ASR also rejects clean segments, f.e. high amplitude alpha oscillations can be confused for noise)
+            %     while ~strcmpi(m4,'yes') && ~strcmpi(m4,'no')
+            %         m4 = input('Marked segments rejection is OK? Type [yes] or [no]: ','s');
+            %     end
+            %     EEG.epochdescription          = sprintf('%.1f percent of data rejected by ASR. Were rejections evaluated as acceptable by visual inspection? > %s', perc_rejected, m4);
+            %     rej_data_eval{subj_i,rej_idx} = EEG.epochdescription;
+            % else
+            %     sprintf('No visualization possible: reconstructed data differs %i samples from original data', EEG_orig.pnts - EEG_rec.pnts);
+            % end            
+
+            % Check ASR - step 3: Run again without reconstruction (segment rejection) 
+            EEG = clean_artifacts(EEG, ...
+                'FlatlineCriterion','off', ...
+                'ChannelCriterion','off', ...  % prevent automatic removal of channels method 1
+                'LineNoiseCriterion','off', ... % prevent automatic removal of channels method 2; alternative (more stringent): 'LineNoiseCriterion',5, ...
+                'Highpass',[0.25 0.75], ...
+                'BurstCriterion',11, ... % alternative (less stringent): 'BurstCriterion',25, ...
+                'BurstCriterionRefMaxBadChns','off', ...               
+                'WindowCriterion',0.5, ...
+                'BurstRejection','on', ... 
+                'Distance','Euclidian');
             
             % Save percentage and evaluation of rejected data by ASR:
             bad_samples              = find(~EEG.etc.clean_sample_mask);
-            perc_rejected            = length(bad_samples)/length(EEG_asr.etc.clean_sample_mask) * 100;
+            perc_rejected            = length(bad_samples)/length(EEG.etc.clean_sample_mask) * 100;
+            perc_rejected            = round(perc_rejected,1); % round to 1 decimal
             rej_idx                  = sess_i + task_i + (sess_i-1); % defines column in 'rej_data' where percentage should be written
             rej_data(subj_i,rej_idx) = perc_rejected;
-            EEG.epochdescription     = [ perc_rejected ' perecentage of data rejected by ASR. Rejections evaluated as acceptable by visual inspection? ' m4];
-            rej_data_eval{subj_i,rej_idx} = EEG.epochdescription;
 
-            % % % this is code is copied from when working from GUI. needed?
-            % % [ALLEEG EEG CURRENTSET]    = pop_newset(ALLEEG, EEG, CURRENTSET,'gui','off');
-            % % EEG = eeg_checkset( EEG );
-            % % [ALLEEG, EEG, CURRENTSET]  = eeg_store( ALLEEG, EEG );
 
-            % Save clean dataset
+            % -- Epoch the data --
+            % For data with rejected segments:
+            % select the 'epoch'-markers ('open+..sec' and 'close+..sec' for resting-state EEG)
+            idx     = startsWith({EEG.event.type}, {'open', 'close'});
+            markers = {EEG.event(idx).type};
+            % create epochs around markers
+            EEG     = pop_epoch(EEG, markers, [0 epoch_length]);
+
+            % Remove epochs with boundary (if not already done during epoching)
+            bad_epochs = cellfun(@(epcs) any(strcmp(epcs,'boundary')), {EEG.epoch.eventtype});
+            EEG        = pop_rejepoch(EEG, bad_epochs, 0);
+
+            % For reconstructed data:
+            % select the 'epoch'-markers ('open+..sec' and 'close+..sec' for resting-state EEG)
+            idx     = startsWith({EEG_rec.event.type}, {'open', 'close'});
+            markers = {EEG_rec.event(idx).type};
+            % create epochs around markers
+            EEG_rec = pop_epoch(EEG_rec, markers, [0 epoch_length]);
+
+            % Remove epochs with boundary (if not already done during epoching)
+            bad_epochs = cellfun(@(epcs) any(strcmp(epcs,'boundary')), {EEG_rec.epoch.eventtype});
+            EEG_rec    = pop_rejepoch(EEG_rec, bad_epochs, 0);
+
+
+            % -- Save clean dataset --
             fprintf('\n****\nSave clean data subject %i session %s task %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
-            SaveName = sprintf( '%i-%s-%s_clean.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
+            % For data with rejected segments:
+            SaveName = sprintf( '%i-%s-%s_cleanRejectedsegments.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
             EEG      = pop_saveset( EEG, 'filename',SaveName,'filepath', path2EEGsets );
+            % For reconstructed data:
+            SaveName_rec = sprintf( '%i-%s-%s_cleanReconstructed.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
+            EEG_rec      = pop_saveset( EEG_rec, 'filename',SaveName_rec,'filepath', path2EEGsets );
+            % Save bad channels and rejected data percentages
             cd(path2save);
             writecell(       bdchns, [path2save '/Overview_badchannels.txt'], 'Delimiter',',');
             writematrix(   rej_data, [path2save '/Overview_rejecteddata.txt'], 'Delimiter',',');
