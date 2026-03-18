@@ -60,7 +60,7 @@ tasks    = {'rust', 'startle'};
 epoch_length = 1; %in seconds
 
 
-%% Do fourier transform
+%% Extract spectral readouts
 
 % Pre-specify a matrix (dataframe) to save outcomes in the size: Subject x session x conditions x channels x frequency points 
 no_frqpoints  = 256 * 2 + 1; % max. sampling frequency * 2 + 1
@@ -109,8 +109,8 @@ for subj_i = 1:length(subj_list)
         % Create Hann window to taper the data with.
         hannw       = hann(EEG.pnts); % = .5 * (1 - cos(2*pi*linspace( 0, 1, size(EEG.datax,2) ) ));
         % Pre-specify power spectrum variable to save FFT results
-        powspec_o   = nan( EEG.nbchan, round(EEG.srate*2+1), size(EEG.datax_o,3) ); 
-        powspec_c   = nan( EEG.nbchan, round(EEG.srate*2+1), size(EEG.datax_c,3) ); 
+        powspec_o   = nan( EEG.nbchan, round(EEG.srate)*2+1, size(EEG.datax_o,3) ); 
+        powspec_c   = nan( EEG.nbchan, round(EEG.srate)*2+1, size(EEG.datax_c,3) ); 
 
 
         % -- Do the FFT --
@@ -137,37 +137,25 @@ for subj_i = 1:length(subj_list)
 
         % Save powespectra in the dense matrix:
         fprintf('\n*** Save dense power spectrum - subject %i session %s\n', subj_list(subj_i), sessions{sess_i});
-        datafr_rso(subj_i, sess_i, 1, : , 1:size(logpowspec_o,2)) = logpowspec_o;
-        datafr_rsc(subj_i, sess_i, 2, : , 1:size(logpowspec_c,2)) = logpowspec_c;
+        datafr_rso(subj_i, sess_i, 1, 1:EEG.nbchan , 1:size(logpowspec_o,2)) = logpowspec_o;
+        datafr_rsc(subj_i, sess_i, 2, 1:EEG.nbchan , 1:size(logpowspec_c,2)) = logpowspec_c;
 
     end
 end
 
+% -- Write to file --
+cd(path2save)
+
+filename_hz = 'hz_rust.mat';
+save(filename_hz,'hz');
+
+filename_o = 'logpowerspectra_rust_open.mat';
+save(filename_o,'datafr_rso', '-v7.3');
+
+filename_c = 'logpowerspectra_rust_closed.mat';
+save(filename_c,'datafr_rsc', '-v7.3');
 
 
 
-%% Spectral analysis
-
-% FFT over all channels
-dataX   = fft(EEG.data,[],2);
-dataPow = mean( abs(dataX) ,3);
-
-% vector of frequencies
-hz = linspace(0,EEG.srate,floor(EEG.pnts));
-
-% frequency cutoffs in Hz and indices
-frex = [ 1 30 ];
-fidx = dsearchn(hz',frex');
-
-addpath('/Volumes/home-3/Documents/Administratie/Congressen, cursussen en praatjes/Cursussen/Analyzing Neural Time Series data - alleen online/NTSA_spectral')
-
-figure(2), clf
-subplot(121)
-plot(hz(fidx(1):fidx(2)),squeeze(dataPow(1,fidx(1):fidx(2))),'b'), hold on
-plot(hz(fidx(1):fidx(2)),squeeze(dataPow(2,fidx(1):fidx(2))),'r'), hold on
-plot(hz(fidx(1):fidx(2)),squeeze(dataPow(3,fidx(1):fidx(2))),'g'), hold on
-plot(hz(fidx(1):fidx(2)),squeeze(dataPow(4,fidx(1):fidx(2))),'k')
-
-subplot(122)
-topoplotIndie(dataPow,EEG.chanlocs,'numcontour',0,'electrodes','off','shading','interp');
-title('Spectral power 1-30 Hz' )
+% change directory to where script is
+cd('/Users/fsmits2/MATLAB/Projects/PRESSsandbox')
