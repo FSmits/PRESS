@@ -19,6 +19,11 @@
 %
 % --------------------------------------------------------------------- %
 
+            % for startle task: you want epochs from -1800 to 150 ms around startle probes, in order to quantify and baseline-correct the maximum amplitude between 20 and 120 milliseconds after probe onset
+            % Approach startle reflex as an eyeblink ("poor man's ocular-EMG") and try to quantify the amplitude of the blinks 20-120 ms after the probe as
+            % detected by a blink algortihm for headband EEG such as Chang et al. 2014: https://doi.org/10.1016/j.cmpb.2015.10.011
+
+
 %% Clear workspace
 
 clear
@@ -51,14 +56,25 @@ subj_list    = table2array( subj_tab(:,1) );
 sessions = {'M1', 'M2', 'M4'};
 tasks    = {'rust', 'startle'};
 
+% Define epoch lengths (in seconds)
+epoch_length = 1; %in seconds
 
-%% Epoch the data
+
+%% Do fourier transform
+
+% Pre-specify a matrix (dataframe) to save outcomes in the size: Subject x session x conditions x channels x frequency points 
+no_frqpoints  = 256 * 2 + 1; % max. sampling frequency * 2 + 1
+no_channels   = 2; % AF7, AF8
+no_conditions = 2; % eyes open, eyes closed
+datafr_rso    = nan(length(subj_list), length(sessions), no_conditions, no_channels, no_frqpoints); %for resting-state EEG data eyes-open
+datafr_rsc    = nan(length(subj_list), length(sessions), no_conditions, no_channels, no_frqpoints); %eyes-closed
+
 
 % Loop over subjects and sessions
 for subj_i = 1:length(subj_list)
     for sess_i = 1:length(sessions)
 
-        filename = sprintf( '%i-%s-%s_clean.set', subj_list(subj_i), sessions{sess_i}, 'rust' );
+        filename = sprintf( '%i-%s-%s_cleanRejectedsegments.set', subj_list(subj_i), sessions{sess_i}, 'rust' );
 
         % Check if file exists
         fullPath = fullfile(path2save, filename);
@@ -67,67 +83,68 @@ for subj_i = 1:length(subj_list)
             continue;  % skip to next iteration of your subject/session loop
         end
 
-        % Load EEG set
+        % -- Load EEG set -- 
         EEG = pop_loadset('filename', filename , 'filepath', path2save);
 
-        % Epoch the data
-        EEG  = pop_epoch( EEG, {'open' 'close'},  [0  2], 'epochinfo', 'yes'); %epoch 0-2 seconds around event
 
-        % Compute spectral power with Welch's method
-        [pxx,f] = pwelch(EEG.data, window, 0, [], EEG.srate);
-        log_power = log10(pxx);
+        % -- Select channels: AF7, AF8 --
+        EEG = pop_select(EEG, 'channel', {'AF7', 'AF8'});
+        
 
-                % % % Save
-                % % fprintf('\n****\nSave epoched data subject %i session %s task %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
-                % % SaveName = sprintf( '%i-%s-%s_epoched.set', subj_list(subj_i), sessions{sess_i}, tasks{task_i} );
-                % % EEG      = pop_saveset( EEG, 'filename',SaveName,'filepath', path2save );
+        % -- Prepare Fourier Transform --
+        % Make sure only one event per epoch is 'read' in case of more events than epochs.
+        events_to_keep = [];
+        for epoci = 1:length({EEG.epoch.eventtype})
+            ev_idx         = EEG.epoch(epoci).event;  % indices into EEG.event
+            events_to_keep = [events_to_keep ev_idx(1)];
+        end
+        % Split dataset into eyes-open and eyes-closed
+        openidx  = startsWith({EEG.event(events_to_keep).type}, 'open');
+        closeidx = startsWith({EEG.event(events_to_keep).type}, 'close');
+        % Put EEG data in double precision for good computation performance
+        EEG.datax_o = double( EEG.data(:,:,openidx) ); 
+        EEG.datax_c = double( EEG.data(:,:,closeidx) ); 
+        nfft        = round(EEG.srate) * 4; % For zero-padding (upsampling) and overlapping in Welch's method
+        nOverlap    = size(EEG.datax_c,2)/2; % For no overlap: 0;  for 50% overlap: size(EEG.datax,2)/2
+        % Create Hann window to taper the data with.
+        hannw       = hann(EEG.pnts); % = .5 * (1 - cos(2*pi*linspace( 0, 1, size(EEG.datax,2) ) ));
+        % Pre-specify power spectrum variable to save FFT results
+        powspec_o   = nan( EEG.nbchan, round(EEG.srate*2+1), size(EEG.datax_o,3) ); 
+        powspec_c   = nan( EEG.nbchan, round(EEG.srate*2+1), size(EEG.datax_c,3) ); 
+
+
+        % -- Do the FFT --
+        fprintf('\n****\nCompute power spectrum - subject %i session %s resting-state\n****\n\n', subj_list(subj_i), sessions{sess_i});
+        % Loop over channels
+        for chani = 1:EEG.nbchan
+            % Do the FFT for each frequency and epoch using Welch's method (MATLAB's function pwelch)
+            % Only if enough data: >25 1-sec epochs
+            if sum(openidx) > 25
+                [powspec_o(chani,:,:), hz] = pwelch( squeeze( EEG.datax_o(chani,:,:) ), hannw, nOverlap, nfft, round(EEG.srate) );
+            end
+            if sum(closeidx) > 25
+                [powspec_c(chani,:,:), hz] = pwelch( squeeze( EEG.datax_c(chani,:,:) ), hannw, nOverlap, nfft, round(EEG.srate) );
+            end
+        end
+
+        % average PSD over trials
+        powspec_o = mean(powspec_o, 3);
+        powspec_c = mean(powspec_c, 3);
+
+        % log transform the power spectra
+        logpowspec_o = log10(powspec_o);
+        logpowspec_c = log10(powspec_c);
+
+        % Save powespectra in the dense matrix:
+        fprintf('\n*** Save dense power spectrum - subject %i session %s\n', subj_list(subj_i), sessions{sess_i});
+        datafr_rso(subj_i, sess_i, 1, : , 1:size(logpowspec_o,2)) = logpowspec_o;
+        datafr_rsc(subj_i, sess_i, 2, : , 1:size(logpowspec_c,2)) = logpowspec_c;
 
     end
 end
 
-            % for startle task: you want epochs from -1800 to 150 ms around startle probes, in order to quantify and baseline-correct the maximum amplitude between 20 and 120 milliseconds after probe onset
-            % Approach startle reflex as an eyeblink ("poor man's ocular-EMG") and try to quantify the amplitude of the blinks 20-120 ms after the probe as
-            % detected by a blink algortihm for headband EEG such as Chang et al. 2014: https://doi.org/10.1016/j.cmpb.2015.10.011
 
-% % % % Add event after each 1-second into eyes-open or eyes-closed condition 
-% % % % 1) find event latencies of start
-% % % open_begin  = sort(find(strcmpi( {EEG.event.type}, 'open' ))); %Find the open/closed eyes onset triggers
-% % % close_begin = sort(find(strcmpi( {EEG.event.type}, 'close' )));
-% % % 
-% % % % eyes open: find start latencies
-% % % for i = 1:length(open_begin)
-% % %     open_period(i,1) = EEG.event(open_begin(i)).latency;
-% % %     open_period(i,2) = EEG.event(open_begin(i)).latency + 60*EEG.srate;
-% % % end
-% % % % eyes closed: find start latencies
-% % % for i = 1:length(close_begin)
-% % %     close_period(i,1) = EEG.event(close_begin(i)).latency;
-% % %     close_period(i,2) = EEG.event(close_begin(i)).latency + 60*EEG.srate;
-% % % end
-% % % 
-% % % % eyes open: insert events
-% % % for i = 1:length(open_begin)
-% % %     trggLats = open_period(i,1):EEG.srate:(open_period(i,2)-1*EEG.srate);
-% % %     for segi = 1:length(trggLats)
-% % %         EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
-% % %             'changefield',{ segi ,'type',    'open' },...
-% % %             'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
-% % %     end
-% % % end
-% % % 
-% % % % eyes closed: insert events
-% % % for i = 1:length(close_begin)
-% % %     trggLats = close_period(i,1):EEG.srate:(close_period(i,2)-1*EEG.srate);
-% % %     for segi = 1:length(trggLats)
-% % %         EEG = pop_editeventvals(EEG,'insert',{ segi ,[],[],[]},...
-% % %             'changefield',{ segi ,'type',    'close' },...
-% % %             'changefield',{ segi ,'latency', trggLats(segi)/EEG.srate }); % latency of events (EEG.event.latency) is defined in data points, not in time. But when you want to change it, you need to define in seconds.
-% % %     end
-% % % end
-% % % 
-% % % 
-% % % % Epoch the data 
-% % % EEG  = pop_epoch( EEG, {'open' 'close'},  [0  1], 'epochinfo', 'yes'); % epoch 0-1 seconds around event
+
 
 %% Spectral analysis
 
