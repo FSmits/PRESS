@@ -60,7 +60,7 @@ tasks    = {'rust', 'startle'};
 epoch_length = 1; %in seconds
 
 
-%% Extract spectral readouts
+%% Do fourier transform
 
 % Pre-specify a matrix (dataframe) to save outcomes in the size: Subject x session x conditions x channels x frequency points 
 no_frqpoints  = 256 * 2 + 1; % max. sampling frequency * 2 + 1
@@ -155,6 +155,97 @@ save(filename_o,'datafr_rso', '-v7.3');
 filename_c = 'logpowerspectra_rust_closed.mat';
 save(filename_c,'datafr_rsc', '-v7.3');
 
+
+
+
+%% Extract spectral readouts
+
+% read data
+cd( path2save ); % return to BRAINPOWER analysis folder
+load hz_rust.mat
+datafr_rso = importdata('logpowerspectra_rust_open.mat');
+datafr_rsc = importdata('logpowerspectra_rust_closed.mat');
+
+
+% pre-specify matrices to save results
+IAF     = nan(length(subj_list), length(sessions), 2); %save both conditions in one matrix, 3rd dimension: 1=open, 2=closed.
+psd_dat = nan(length(subj_list), length(sessions), 2, 4); %save both conditions and all bands on one matrix, 3rd dimension: 1=open, 2=closed, 4th dimension: 1=delta, 2=theta, 3=alpha, 4=beta.
+% Define frequency bands
+betawin  = [13   20];
+betaidx  = dsearchn(hz, betawin');
+alphawin = [7.5  12.5];
+alphaidx = dsearchn(hz, alphawin');
+frqsvec  = alphaidx(1):alphaidx(2);
+thetawin = [4    7.5];
+thetaidx = dsearchn(hz, thetawin');
+deltawin = [1    4];
+deltaidx = dsearchn(hz, deltawin');
+% Loop over subjects and sessions
+for subj_i = 1:length(subj_list)
+    for sess_i = 1:length(sessions)
+
+        % Only continue if PSD is available (for at least 1 channel)
+        if ~any(isnan(datafr_rso(subj_i, sess_i, 1, 1:2, 1)))
+
+        % average PSD over channels
+        dat_o = squeeze( mean( datafr_rso(subj_i, sess_i, 1, :, :), 4,'omitnan') );
+        dat_c = squeeze( mean( datafr_rsc(subj_i, sess_i, 2, :, :), 4,'omitnan') );   
+
+        % plot PSD
+        figure(3)
+        plot(hz, dat_o,'k','LineWidth',3); hold on
+        plot(hz, dat_c,'r','LineWidth',3)
+
+        % -- Find Individual Alpha Peak Frequency (IAF) --  
+        % eyes open
+        dat_o_alpha       = dat_o(alphaidx(1):alphaidx(2));
+        [maxpow_o, idx_o] = max( dat_o_alpha );
+        maxfrqidx_o       = frqsvec(idx_o(1));
+        IAF_o             = hz(maxfrqidx_o);
+        % eyes closed
+        dat_c_alpha       = dat_c(alphaidx(1):alphaidx(2));
+        [maxpow_c, idx_c] = max( dat_c_alpha );
+        maxfrqidx_c       = frqsvec(idx_c(1));
+        IAF_c             = hz(maxfrqidx_c);
+
+        IAF(subj_i, sess_i, 1) =  IAF_o;
+        IAF(subj_i, sess_i, 2) =  IAF_c;
+
+        % -- Extract average power for each band -- 
+        dat_o_beta  = mean( dat_o(betaidx(1):betaidx(2)), 'omitnan' );
+        dat_c_beta  = mean( dat_c(betaidx(1):betaidx(2)), 'omitnan' );
+        dat_o_alpha = mean( dat_o(alphaidx(1):alphaidx(2)), 'omitnan' );
+        dat_c_alpha = mean( dat_c(alphaidx(1):alphaidx(2)), 'omitnan' );
+        dat_o_theta = mean( dat_o(thetaidx(1):thetaidx(2)), 'omitnan' );
+        dat_c_theta = mean( dat_c(thetaidx(1):thetaidx(2)), 'omitnan' );
+        dat_o_delta = mean( dat_o(deltaidx(1):deltaidx(2)), 'omitnan' );
+        dat_c_delta = mean( dat_c(deltaidx(1):deltaidx(2)), 'omitnan' );
+
+        % write to data matrix
+        psd_dat(subj_i,sess_i,1,1) = dat_o_delta;
+        psd_dat(subj_i,sess_i,2,1) = dat_c_delta;
+        psd_dat(subj_i,sess_i,1,2) = dat_o_theta;
+        psd_dat(subj_i,sess_i,2,2) = dat_c_theta;
+        psd_dat(subj_i,sess_i,1,3) = dat_o_alpha;
+        psd_dat(subj_i,sess_i,2,3) = dat_c_alpha;
+        psd_dat(subj_i,sess_i,1,4) = dat_o_beta;
+        psd_dat(subj_i,sess_i,2,4) = dat_c_beta;
+
+        % clear input before next iteration
+        clear dat_o; clear dat_c
+        
+        end    
+    end
+end
+
+% -- Write to file --
+cd(path2save)
+
+filename_IAF = 'IAF.mat';
+save(filename_IAF,'IAF');
+
+filename_psd = 'PSD_all.mat';
+save(filename_psd,'psd_dat');
 
 
 % change directory to where script is
