@@ -262,7 +262,18 @@ for subj_i = 1:length(subj_list)
                     % find latencies of this event and next event
                     start_lat  = EEG.event(current_event).latency;
                     next_lat   = EEG.event(current_event + 1).latency;
-                    event_lats = start_lat:(EEG.srate*epoch_length):(next_lat-EEG.srate);
+                    % when this condition event is the last event, i.e., no 'end event' was present in original data, compute latency of the end of condition
+                    if start_lat == max([EEG.event.latency])
+                        end_cond_lat = start_lat+60*EEG.srate-EEG.srate;
+                        if end_cond_lat < EEG.pnts
+                            event_lats = start_lat:(EEG.srate*epoch_length):end_cond_lat;
+                        else
+                            % when end of condition latency is beyond latency of last data sample, only add markers until end of data
+                            event_lats = start_lat:(EEG.srate*epoch_length):EEG.pnts;
+                        end
+                    else
+                        event_lats = start_lat:(EEG.srate*epoch_length):(next_lat-EEG.srate);
+                    end
                     % append events
                     for segi = 2:length(event_lats) %start from 2, because first event already exists (original trigger event)
                         new_event         = EEG.event(1); %copy template of event to have all the struct-fields EEGlab requires
@@ -310,7 +321,9 @@ if ~exist(fullPath_badch, 'file')
 else
     % When found, read existing matrix
     fprintf('Bad channels file found. %s. \nReading file.\n', fullPath_badch);
-    bdchns = table2cell( readtable( fullPath_badch ) );
+    bdchns      = readcell( fullPath_badch);
+    idx_missing = cellfun(@(x) isa(x,'missing'), bdchns);
+    bdchns(idx_missing) = {[]};
 end
 
 if ~exist(fullPath_rejdat, 'file')
@@ -326,7 +339,7 @@ else
     fprintf('Rejected epochs file found. %s. \nReading file.\n', fullPath_rejdat);
     rej_data = table2array( readtable( fullPath_rejdat ) );
     % Load evaluation cell variable too
-    rej_data_eval = table2cell( readtable( fullfile([ path2save '/Evaluation_rejecteddata.txt']) ) );
+    rej_data_eval = readcell( fullfile([ path2save '/Evaluation_rejecteddata.txt']) );
 end
 
 
@@ -351,48 +364,64 @@ for subj_i = 1:length(subj_list)
             % % (needed? for Artifact Subspace Reconstruction, ASR)
             % EEG = pop_chanedit(EEG, {'lookup','/Users/fsmits2/Downloads/eeglab2024.2/plugins/dipfit/standard_BEM/elec/standard_1005.elc'});
 
+             % -- Check if there is at least 20s of recorded data --
+            if EEG.pnts/EEG.srate < 20
+                fprintf('Less than 20s recorded data in %s.\n Skipping.\n', fullPath);
+                continue;  % skip to next iteration of your subject/session/task loop
+            end
 
             % -- Detect noisy channels --
-            pop_eegplot( EEG, 1, 1, 1);
-            for chan = 1:EEG.nbchan
-                % - Compute standard deviation              
-                chansd = std(EEG.data(chan, :)');
-                fprintf('%f = STD channel %s.\n', chansd, EEG.chanlocs(chan).labels);
-                % - Compute PSD
-                % Compute mean bandpower per channel in PSD 5-34 Hz (34 Hz is based on filter freq, and 5 Hz is based on Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG.)
-                % Delorme et al. use mean bandpower >25 log10(µV2)/Hz as threshold.
-                % to suppress pop-up window, pass the window numbers to pwelch
-                window      = min(EEG.srate, size(EEG.data,2));
-                winvec      = hann(window); 
-                EEG_datauV  = EEG.data * 1e6;   % convert to µV
-                [pxx,f]     = pwelch(EEG_datauV(chan,:)', winvec, 0, [], EEG.srate); %remember to transpose EEG.data, because pwelch function expects an array of timepoints x channels, while EEG.data is structured as channels x timepoints.
-                idx = f >= 5 & f <= 34;
-                band_power = mean(log10(pxx(idx)));
-                fprintf('%f log10(µV2)/Hz = mean PSD channel %s.\n Delorme 2021 threshold: 25 log10(µV2)/Hz \n', band_power, EEG.chanlocs(chan).labels);
-            end
-            
-            % Visually check noisy channels in plot and decide to keep or reject
-            m3a = "no"; m3 = -1;
-            while m3a ~= "yes"
-                m3a = input('Ready to input channels to leave out? Type [yes] ','s');
-            end       
-            while m3 == -1
-                m3 = str2double( input('How many channels to leave out? ','s') );
-            end
-            badchannels = {[]}; badchannrs = [];  
+            badchannels = {[]}; badchannrs = [];
             badchan_idx = sess_i + task_i + (sess_i-1); % defines column in 'bdchns' where bad channel should be written
-            if m3 > 0
-                for badchani = 1:m3
-                    badchannels{badchani} = input(['Which channel to leave out? nr: ' num2str(badchani) ' ' ],'s') ;
-                    badchannrs(badchani)  = find( strcmpi( badchannels{badchani}, {EEG.chanlocs.labels} ));
+            if ~ismissing(bdchns{subj_i,sess_i+1})
+                % Load bad channels if channel rejection already done
+                if bdchns{subj_i,sess_i+1} ~= 0
+                    badchannels = {bdchns{subj_i,sess_i+1}};
                 end
-                bdchns{subj_i,sess_i+1}  = string(badchannels);
-                EEG.eventdescription = { {'Too much noise in channels: '} badchannels };
                 % Remove bad channels
                 EEG = pop_select(EEG,'nochannel', badchannels);
             else
-                bdchns{subj_i,sess_i+1}  = '0';
-            end        
+                % Else: check channel signals and reject bad channels
+                pop_eegplot( EEG, 1, 1, 1);
+                for chan = 1:EEG.nbchan
+                    % - Compute standard deviation
+                    chansd = std(EEG.data(chan, :)');
+                    fprintf('%f = STD channel %s.\n', chansd, EEG.chanlocs(chan).labels);
+                    % - Compute PSD
+                    % Compute mean bandpower per channel in PSD 5-34 Hz (34 Hz is based on filter freq, and 5 Hz is based on Delorme, A., & Martin, J. A. (2021, December). Automated data cleaning for the Muse EEG.)
+                    % Delorme et al. use mean bandpower >25 log10(µV2)/Hz as threshold.
+                    % to suppress pop-up window, pass the window numbers to pwelch
+                    window      = min(EEG.srate, size(EEG.data,2));
+                    winvec      = hann(window);
+                    EEG_datauV  = EEG.data * 1e6;   % convert to µV
+                    [pxx,f]     = pwelch(EEG_datauV(chan,:)', winvec, 0, floor(EEG.srate), EEG.srate); %remember to transpose EEG.data, because pwelch function expects an array of timepoints x channels, while EEG.data is structured as channels x timepoints.
+                    idx = f >= 5 & f <= 34;
+                    band_power = mean(log10(pxx(idx)));
+                    fprintf('%f log10(µV2)/Hz = mean PSD channel %s.\n Delorme 2021 threshold: 25 log10(µV2)/Hz \n', band_power, EEG.chanlocs(chan).labels);
+                end
+
+                % Visually check noisy channels in plot and decide to keep or reject
+                m3a = "no"; m3 = -1;
+                while m3a ~= "yes"
+                    m3a = input('Ready to input channels to leave out? Type [yes] ','s');
+                end
+                while m3 == -1
+                    m3 = str2double( input('How many channels to leave out? ','s') );
+                end                
+                if m3 > 0
+                    for badchani = 1:m3
+                        badchannels{badchani} = input(['Which channel to leave out? nr: ' num2str(badchani) ' ' ],'s') ;
+                        badchannrs(badchani)  = find( strcmpi( badchannels{badchani}, {EEG.chanlocs.labels} ));
+                    end
+                    bdchns{subj_i,sess_i+1}  = string(badchannels);
+                    EEG.eventdescription = { {'Too much noise in channels: '} badchannels };
+                    % Remove bad channels
+                    EEG = pop_select(EEG,'nochannel', badchannels);
+                else
+                    bdchns{subj_i,sess_i+1}  = '0';
+                end
+            end
+            
 
             % Save original data (before artifact rejection)
             EEG_orig = EEG;
@@ -490,15 +519,15 @@ for subj_i = 1:length(subj_list)
             writematrix(   rej_data, [path2save '/Overview_rejecteddata.txt'], 'Delimiter',',');
             writecell(rej_data_eval, [path2save '/Evaluation_rejecteddata.txt'], 'Delimiter',',');
 
-            m2 = 0;
-            while m2 == 0
-                m2 = input('Continue? [Y/N] ','s');
-                if m2 == 'Y'
-                    continue
-                else
-                    return
-                end
-            end
+            % m2 = 0;
+            % while m2 == 0
+            %     m2 = input('Continue? [Y/N] ','s');
+            %     if m2 == 'Y'
+            %         continue
+            %     else
+            %         return
+            %     end
+            % end
 
             clear EEG
             close all
