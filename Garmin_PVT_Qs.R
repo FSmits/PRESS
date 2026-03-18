@@ -4,7 +4,7 @@
 #
 # Description:  This script assesses the associations between Garmin, PVT, and questionnaire data.
 #
-# Date:         Aug 2025
+# Date:         Aug 2025, update March 2026
 # R.version:    4.4.0 (2024-04-24)
 # Rstudio:      2025.05.0+496
 #
@@ -13,12 +13,9 @@
 # clear environment
 rm(list=ls())
 
-# ------------------------------------------------------------------------------------------------ #
-#                                      Settings & Dependencies
-# ------------------------------------------------------------------------------------------------ #
-
-# numbers of external volumes
-heronderzoek <- "heronderzoek"
+# --------------------------------------------------------------------------- #
+# ----------------- Settings & Dependencies ---------------------------------
+# --------------------------------------------------------------------------- #
 
 
 # Import libraries
@@ -27,6 +24,7 @@ heronderzoek <- "heronderzoek"
 # read files
 library(readxl)
 library(writexl)
+library(R.matlab)  
 
 # data manipulation
 library(tidyverse)
@@ -57,22 +55,32 @@ library(corrplot)
 # Define working directory
 # ----------------------------------- #
 
-# external volume, change value if necessary 
-#setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", sep = ""))
-setwd("/Volumes/Onderzoek/Groep Geuze/25U-0078_PRESS/")
+# find path name to research folder structure (RFS)
+path2RFS <- '/Users/fsmits2/Networkshares/Onderzoek/Groep Geuze/25U-0078_PRESS/'; # Enter your path to RFS. End with slash ('/' on Mac, '\' on Windows). On windows: setwd(paste("~/Networkshares/", heronderzoek, "/Groep Geuze/25U-0078_PRESS/", sep = ""))
+
+# set other paths 
+path2data    <- paste0(path2RFS, 'E_ResearchData/2_ResearchData/')
+path2save    <- paste0(path2data, '1. Verwerkte data/Muse/')
+
+# enter subject names (extract from key file where subject IDs are linked)
+key_filename <- paste0(path2data, 'SubjectID_koppelbestand_Castor-PVT-Garmin.csv')
+subj_tab     <- read_csv( key_filename, show_col_types = FALSE)
+subj_list    <- as.matrix(subj_tab[,1])
+
+# enter session and experimental task names
+sessions <- c('M1', 'M2', 'M4')
+tasks    <- c('rust', 'startle')
+
+# set path to RFS
+setwd(path2RFS) 
 
 
-# ~/Networkshares/ of ~/Volumes/
 
+# --------------------------------------------------------------------------- #
+# ----------------- Data reading and preparation ----------------------------
+# --------------------------------------------------------------------------- #
 
-
-
-
-# ------------------------------------------------------------------------------------------------ #
-#                                   Data Collection and preparation
-# ------------------------------------------------------------------------------------------------ #
-
-# Read demography
+# ---- Read demography ----
 # ----------------------------------- #
 df_CRF <- read_delim("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_export_20250514_copy.csv", 
                       delim = ";", quote = "\"", show_col_types = FALSE)
@@ -87,7 +95,7 @@ df_demo <- subset(df_CRF, select = c("Participant Id", "rank"))
 colnames(df_demo) <- c("Castor.ID", "rank")
          
 
-# Read garmin
+# ---- Read garmin -----
 # ----------------------------------- #
 df_garmin <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Garmin/Garmin_data_clean2.csv", show_col_types = FALSE)
 
@@ -96,7 +104,7 @@ df_garmin_avg <- df_garmin %>%
   summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE)), .groups = "drop") %>%
   filter(measurement != "x - Transitiedag")
 
-# Read PVT
+# ---- Read PVT -----
 # ----------------------------------- #
 df_pvt <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/PVT/PVT_readouts.csv", show_col_types = FALSE)
 
@@ -117,7 +125,7 @@ df_pvt <- df_pvt %>%
                                  TRUE ~ NA_character_))
 
 
-# Read questionnaires
+# ---- Read questionnaires -----
 # ----------------------------------- #
 df_in_slaap_vallen <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_In_slaap_vallen_export_20250514_clean.csv", show_col_types = FALSE)
 df_spanning        <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Spanning_export_20250514_clean.csv", show_col_types = FALSE)
@@ -157,7 +165,7 @@ df_vas <- df_vas %>%
          Castor.ID = Castor.Participant.ID)
 
 
-# Read sleep diary
+# ---- Read sleep diary ----
 # ----------------------------------- #
 df_slaapdagboek1 <- read_csv("E_ResearchData/2_ResearchData/1. Verwerkte data/Castor/PRESS_Slaapdagboek_1_nacht_export_20250514_clean.csv",show_col_types = FALSE)
 
@@ -311,10 +319,82 @@ df_slaapdagboek_avg <- df_slaapdagboek_all %>%
   summarise(across(where(is.numeric), ~ mean(.x, na.rm = TRUE)), .groups = "drop")
 
 
+# ---- Read EEG data ----
+# ----------------------- #
 
-# ------------------------------------------------------------------------------------------------ #
-#                                          Merge data frames
-# ------------------------------------------------------------------------------------------------ #
+# ------ Load the data ------
+# Individual Alpha Frequency (IAF)
+# ----------------------- 
+# IAFs saved in 3D matrix. 1st dimension: subjectIDs, 2nd dimension: sessions (1=T0/M1, 2=T1/M2, 3=T3/M4), 3rd dimension: conditions (1=open, 2=closed).
+filename_IAF <- 'IAF.mat'
+filepath_IAF <- paste0( path2save, filename_IAF )
+IAF_list     <- readMat( filepath_IAF ) 
+IAF_list     <- IAF_list[[1]]
+# Unlist (#columns = #dimensions + 1, last column contains the readout)
+IAF           <- reshape2::melt(IAF_list)
+colnames(IAF) <- c("subject","session","condition","IAF")
+
+# Add subjectIDs
+subj_vec           <- 1:length(subj_list)
+subj_mat           <- t(rbind(t(subj_list),subj_vec))
+colnames(subj_mat) <- c("Castor.ID","subject")
+IAF                <- merge(IAF, subj_mat, by="subject")
+
+# Give names to sessions and conditions
+IAF <- IAF %>%
+  mutate(measurement = case_when(session == 1 ~ "T0",
+                                 session == 2 ~ "T1",
+                                 session == 3 ~ "T3",
+                                 TRUE ~ NA_character_),
+         eyes = case_when( condition == 1 ~ "open",
+                           condition == 2 ~ "closed",
+                           TRUE ~ NA_character_))
+
+# Change Matlab's 'NaN' to R's 'NA'
+IAF$IAF[is.nan(IAF$IAF)] <- NA
+
+# Power spectrum densities
+# ----------------------- 
+# PSDs saved in 4D matrix. 1st dimension: subjectIDs, 2nd dimension: sessions (1=T0/M1, 2=T1/M2, 3=T3/M4), 3rd dimension: conditions (1=open, 2=closed), 4th dimension: frequency bands (1=delta(1-4Hz), 2=theta(4-7.5Hz), 3=alpha(7.5-12.5Hz), 4=beta(13-20Hz)).
+filename_psd <- 'PSD_all.mat'
+filepath_psd <- paste0( path2save, filename_psd )
+psd_list     <- readMat( filepath_psd ) 
+psd_list     <- psd_list[[1]]
+# Unlist (#columns = #dimensions + 1, last column contains the readout)
+psd           <- reshape2::melt(psd_list)
+colnames(psd) <- c("subject","session","condition","band","logpower")
+
+# Add subjectIDs
+subj_vec           <- 1:length(subj_list)
+subj_mat           <- t(rbind(t(subj_list),subj_vec))
+colnames(subj_mat) <- c("Castor.ID","subject")
+psd                <- merge(psd, subj_mat, by="subject")
+
+# Give names to sessions and conditions
+psd <- psd %>%
+  mutate(measurement = case_when(session == 1 ~ "T0",
+                                 session == 2 ~ "T1",
+                                 session == 3 ~ "T3",
+                                 TRUE ~ NA_character_),
+         eyes = case_when( condition == 1 ~ "open",
+                           condition == 2 ~ "closed",
+                           TRUE ~ NA_character_),
+         freq_band = case_when( band == 1 ~ "delta",
+                                band == 2 ~ "theta",
+                                band == 3 ~ "alpha",
+                                band == 4 ~ "beta",
+                                TRUE ~ NA_character_))
+
+# Change Matlab's 'NaN' to R's 'NA'
+psd$logpower[is.nan(psd$logpower)] <- NA
+
+
+
+
+
+# --------------------------------------------------------------------------- #
+# ----------------- Merge data frames --------------------------------------
+# --------------------------------------------------------------------------- #
 
 
 convert_measurement <- function(df) {
@@ -354,15 +434,45 @@ df_vas <- df_vas %>%
 df_garmin$measurement[df_garmin$measurement=="x - Oefening stilgelegd"] <- "T1"
 df_garmin_avg$measurement[df_garmin_avg$measurement=="x - Oefening stilgelegd"] <- "T1"
 
-# Merge all Qs with df_garmin_avg and slaapdagboek_avg
+# put spectral outcomes for all conditions in separate columns (wide, not long)
+# IAF
+df_IAF <- IAF %>%
+  select(-subject, -session, -condition)
+df_IAF <- df_IAF %>%
+  pivot_wider(
+    names_from = eyes,
+    values_from = IAF,
+    names_prefix = "IAF_"
+  )
+# PSD
+df_psd <- psd %>%
+  select(-subject, -session, -condition, -band)
+df_psd <- df_psd %>%
+  pivot_wider(
+    names_from = c(freq_band, eyes),
+    values_from = logpower,
+    names_sep = "_",
+    names_prefix = "logpower_"
+  )
+
+
+# --------- Merge all dfs
+# --------------------------
 df_merged <- df_garmin_avg %>%
-  full_join(df_demo, by = "Castor.ID") %>%
-  full_join(df_pvt, by = c("Castor.ID", "measurement")) %>%
+  full_join(df_demo,             by = "Castor.ID") %>%
+  full_join(df_pvt,              by = c("Castor.ID", "measurement")) %>%
   full_join(df_in_slaap_vallen_sum, by = c("Castor.ID", "measurement")) %>%
-  full_join(df_spanning_sum, by = c("Castor.ID", "measurement")) %>%
+  full_join(df_spanning_sum,     by = c("Castor.ID", "measurement")) %>%
   full_join(df_vermoeidheid_sum, by = c("Castor.ID", "measurement")) %>%
-  full_join(df_vas, by = c("Castor.ID", "measurement")) %>%
-  full_join(df_slaapdagboek, by = c("Castor.ID", "measurement"))  
+  full_join(df_vas,              by = c("Castor.ID", "measurement")) %>%
+  full_join(df_slaapdagboek,     by = c("Castor.ID", "measurement")) %>%
+  full_join(df_IAF,              by = c("Castor.ID", "measurement")) %>%
+  full_join(df_psd,              by = c("Castor.ID", "measurement")) 
+
+
+# --------------------------------------------------------------------------- #
+# ----------------- Compare Garmin with sleep diary--------------------------
+# --------------------------------------------------------------------------- #
 
 # Merge sleep diary with df_garmin
 #df_slaapdagboek_all$Survey.Completed.On <- as.Date(dmy_hms(df_slaapdagboek_all$Survey.Completed.On))
@@ -414,9 +524,9 @@ ggplot(plotdiff[!is.na(plotdiff$diff), ], aes(x = measurement, y = diff, color =
 
 
 
-# ------------------------------------------------------------------------------------------------ #
-#                               Add T2/T3 and delta's
-# ------------------------------------------------------------------------------------------------ #
+# --------------------------------------------------------------------------- #
+# ----------------- Add T2/T3 and delta's -----------------------------------
+# --------------------------------------------------------------------------- #
 
 # Combine T1 and T2 into one measurement
 # -------------------------------------- #
@@ -450,53 +560,124 @@ rm(df_t1_t2)
 # Calculate delta between measurement rounds
 # --------------------------------------------- #
 
-# Step 1: T1 vs T2-T3
-df_diff1 <- df_merged %>%
-  filter(measurement %in% c("T0", "T1/2")) %>%
+# # Step 1: T1 vs T2-T3
+# df_diff1 <- df_merged %>%
+#   filter(measurement %in% c("T0", "T1/2")) %>%
+#   pivot_wider(
+#     names_from = measurement,
+#     values_from = c(HRV.Last.Night.Avg...ms., Avg.Sleep.min, Avg.Sleep.Awake.Dur.min, 
+#                     Sleep.Score, rt_mean, rt_sd, sum_slaap, sum_spanning, sum_vermoeidheid, 
+#                     alertness, irritability, skittish, total_sleep_minutes, T123_duration_awakening_24h),
+#     names_sep = "_"
+#   ) %>%
+#   mutate(across(
+#     ends_with("_T1/2"),
+#     ~ ifelse(is.na(.x) | is.na(get(sub("_T1/2$", "_T0", cur_column()))), NA_real_, .x - get(sub("_T1/2$", "_T0", cur_column()))),
+#     .names = "{sub('_T1/2$', '', .col)}"
+#   )) %>%
+#   select(Castor.ID, all_of(c("HRV.Last.Night.Avg...ms.", "Avg.Sleep.min", 
+#                              "Avg.Sleep.Awake.Dur.min", "Sleep.Score", 
+#                              "rt_mean", "rt_sd", "sum_slaap", 
+#                              "sum_spanning", "sum_vermoeidheid", 
+#                              "alertness", "irritability", "skittish", 
+#                              "total_sleep_minutes","T123_duration_awakening_24h"))) %>%
+#   mutate(measurement = "delta_T0_T1/2") %>%
+#   select(Castor.ID, measurement, everything())
+
+# Step 1: T0 vs T1-T2
+df_sub1 <- df_merged %>%
+  filter(measurement %in% c("T0", "T1/2"))
+
+df_wide1 <- df_sub1 %>%
   pivot_wider(
+    id_cols = Castor.ID,
     names_from = measurement,
     values_from = c(HRV.Last.Night.Avg...ms., Avg.Sleep.min, Avg.Sleep.Awake.Dur.min, 
                     Sleep.Score, rt_mean, rt_sd, sum_slaap, sum_spanning, sum_vermoeidheid, 
-                    alertness, irritability, skittish, total_sleep_minutes, T123_duration_awakening_24h),
-    names_sep = "_"
-  ) %>%
-  mutate(across(
-    ends_with("_T1/2"),
-    ~ ifelse(is.na(.x) | is.na(get(sub("_T1/2$", "_T0", cur_column()))), NA_real_, .x - get(sub("_T1/2$", "_T0", cur_column()))),
-    .names = "{sub('_T1/2$', '', .col)}"
-  )) %>%
-  select(Castor.ID, all_of(c("HRV.Last.Night.Avg...ms.", "Avg.Sleep.min", 
-                             "Avg.Sleep.Awake.Dur.min", "Sleep.Score", 
-                             "rt_mean", "rt_sd", "sum_slaap", 
-                             "sum_spanning", "sum_vermoeidheid", 
-                             "alertness", "irritability", "skittish", 
-                             "total_sleep_minutes","T123_duration_awakening_24h"))) %>%
-  mutate(measurement = "delta_T0_T1/2") %>%
-  select(Castor.ID, measurement, everything())
+                    alertness, irritability, skittish, total_sleep_minutes, 
+                    T123_duration_awakening_24h,IAF_open,IAF_closed,logpower_delta_open,        
+                    logpower_alpha_open,logpower_beta_closed,logpower_beta_open,
+                    logpower_alpha_closed,logpower_theta_closed,logpower_theta_open,
+                    logpower_delta_closed)
+  )
+
+df_diff1 <- df_wide1 %>%
+  mutate(
+    HRV_diff                 = `HRV.Last.Night.Avg...ms._T1/2` - `HRV.Last.Night.Avg...ms._T0`,
+    Avg.Sleep.min_diff       = `Avg.Sleep.min_T1/2` - `Avg.Sleep.min_T0`,
+    sum_slaap_diff           = `sum_slaap_T1/2` - `sum_slaap_T0`, 
+    sum_spanning_diff        = `sum_spanning_T1/2` - `sum_spanning_T0`, 
+    sum_vermoeidheid_diff    = `sum_vermoeidheid_T1/2` - `sum_vermoeidheid_T0`, 
+    alertness_diff           = `alertness_T1/2` - `alertness_T0`, 
+    irritability_diff        = `irritability_T1/2` - `irritability_T0`, 
+    skittish_diff            = `skittish_T1/2` - `skittish_T0`,
+    total_sleep_minutes_diff = `total_sleep_minutes_T1/2` - `total_sleep_minutes_T0`,
+    rt_mean_diff             = `rt_mean_T1/2` - `rt_mean_T0`,
+    IAF_open_diff            = `IAF_open_T1/2` - `IAF_open_T0`,
+    logpower_theta_open_diff = `logpower_theta_open_T1/2` - `logpower_theta_open_T0`,
+    logpower_alpha_open_diff = `logpower_alpha_open_T1/2` - `logpower_alpha_open_T0`
+  )
+
 
 
 # Step 2: T1-T2 vs T3
-df_diff2 <- df_merged %>%
-  filter(measurement %in% c("T1/2", "T3")) %>%
+# df_diff2 <- df_merged %>%
+#   filter(measurement %in% c("T1/2", "T3")) %>%
+#   pivot_wider(
+#     names_from = measurement,
+#     values_from = c(HRV.Last.Night.Avg...ms., Resting.HR..bpm., Avg.Sleep.min, Nap.Duration.min,
+#                     HRV.Last.Night.High..ms., Min..Daily.HR..bpm., Avg.Sleep.Awake.Dur.min, Sleep.Score,
+#                     rt_mean, sum_slaap, sum_spanning, sum_vermoeidheid, alertness, irritability, skittish),
+#     names_sep = "_"
+#   ) %>%
+#   mutate(across(
+#     ends_with("_T1/2"),
+#     ~ ifelse(is.na(.x) | is.na(get(sub("_T1/2$", "_T3", cur_column()))), NA_real_, get(sub("_T1/2$", "_T3", cur_column())) - .x),
+#     .names = "{sub('_T1/2$', '', .col)}"
+#   )) %>%
+#   select(Castor.ID, all_of(c(
+#     "HRV.Last.Night.Avg...ms.", "Resting.HR..bpm.", "Avg.Sleep.min", "Nap.Duration.min",
+#     "HRV.Last.Night.High..ms.", "Min..Daily.HR..bpm.", "Avg.Sleep.Awake.Dur.min", "Sleep.Score",
+#     "rt_mean", "sum_slaap", "sum_spanning", "sum_vermoeidheid", "alertness", "irritability", "skittish"
+#   ))) %>%
+#   mutate(measurement = "delta_T1/2_T3") %>%
+#   select(Castor.ID, measurement, everything())
+
+
+# Step 1: T1-2 vs T3
+df_sub2 <- df_merged %>%
+  filter(measurement %in% c("T1/2", "T3"))
+
+df_wide2 <- df_sub2 %>%
   pivot_wider(
+    id_cols = Castor.ID,
     names_from = measurement,
-    values_from = c(HRV.Last.Night.Avg...ms., Resting.HR..bpm., Avg.Sleep.min, Nap.Duration.min,
-                    HRV.Last.Night.High..ms., Min..Daily.HR..bpm., Avg.Sleep.Awake.Dur.min, Sleep.Score,
-                    rt_mean, sum_slaap, sum_spanning, sum_vermoeidheid, alertness, irritability, skittish),
-    names_sep = "_"
-  ) %>%
-  mutate(across(
-    ends_with("_T1/2"),
-    ~ ifelse(is.na(.x) | is.na(get(sub("_T1/2$", "_T3", cur_column()))), NA_real_, get(sub("_T1/2$", "_T3", cur_column())) - .x),
-    .names = "{sub('_T1/2$', '', .col)}"
-  )) %>%
-  select(Castor.ID, all_of(c(
-    "HRV.Last.Night.Avg...ms.", "Resting.HR..bpm.", "Avg.Sleep.min", "Nap.Duration.min",
-    "HRV.Last.Night.High..ms.", "Min..Daily.HR..bpm.", "Avg.Sleep.Awake.Dur.min", "Sleep.Score",
-    "rt_mean", "sum_slaap", "sum_spanning", "sum_vermoeidheid", "alertness", "irritability", "skittish"
-  ))) %>%
-  mutate(measurement = "delta_T1/2_T3") %>%
-  select(Castor.ID, measurement, everything())
+    values_from = c(HRV.Last.Night.Avg...ms., Avg.Sleep.min, Avg.Sleep.Awake.Dur.min, 
+                    Sleep.Score, rt_mean, rt_sd, sum_slaap, sum_spanning, sum_vermoeidheid, 
+                    alertness, irritability, skittish, total_sleep_minutes, 
+                    T123_duration_awakening_24h,IAF_open,IAF_closed,logpower_delta_open,        
+                    logpower_alpha_open,logpower_beta_closed,logpower_beta_open,
+                    logpower_alpha_closed,logpower_theta_closed,logpower_theta_open,
+                    logpower_delta_closed)
+  )
+
+df_diff2 <- df_wide2 %>%
+  mutate(
+    HRV_diff2                 = `HRV.Last.Night.Avg...ms._T3` - `HRV.Last.Night.Avg...ms._T1/2`,
+    Avg.Sleep.min_diff2       = `Avg.Sleep.min_T3` - `Avg.Sleep.min_T1/2`,
+    sum_slaap_diff2           = `sum_slaap_T3` - `sum_slaap_T1/2`, 
+    sum_spanning_diff2        = `sum_spanning_T3` - `sum_spanning_T1/2`, 
+    sum_vermoeidheid_diff2    = `sum_vermoeidheid_T3` - `sum_vermoeidheid_T1/2`, 
+    alertness_diff2           = `alertness_T3` - `alertness_T1/2`, 
+    irritability_diff2        = `irritability_T3` - `irritability_T1/2`, 
+    skittish_diff2            = `skittish_T3` - `skittish_T1/2`,
+    total_sleep_minutes_diff2 = `total_sleep_minutes_T3` - `total_sleep_minutes_T1/2`,
+    rt_mean_diff2             = `rt_mean_T3` - `rt_mean_T1/2`,
+    IAF_open_diff2            = `IAF_open_T3` - `IAF_open_T1/2`,
+    logpower_theta_open_diff2 = `logpower_theta_open_T3` - `logpower_theta_open_T1/2`,
+    logpower_alpha_open_diff2 = `logpower_alpha_open_T3` - `logpower_alpha_open_T1/2`
+  )
+
 
 # Stap 4: Combine
 df_final <- bind_rows(df_merged, df_diff1, df_diff2) %>%
@@ -517,9 +698,9 @@ write.csv(df_final,"E_ResearchData/2_ResearchData/1. Verwerkte data/PRESS_all_va
 
 
 
-# ------------------------------------------------------------------------------------------------ #
-#                                   Calculate correlations
-# ------------------------------------------------------------------------------------------------ #
+# --------------------------------------------------------------------------- #
+# ----------------- Calculate correlations ----------------------------------
+# --------------------------------------------------------------------------- #
 
 
 # Create correlation matrix
@@ -559,14 +740,17 @@ for (measurement_point in measurements) {
 
 
 
-# ------------------------------------------------------------------------------------------------ #
-#                                   Visualize trajectories
-# ------------------------------------------------------------------------------------------------ #
+# --------------------------------------------------------------------------- #
+# ----------------- Visualize trajectories ----------------------------------
+# --------------------------------------------------------------------------- #
 
 # Vars to plot
 vars_to_plot <- c("HRV.Last.Night.Avg...ms.","Avg.Sleep.min", "sum_vermoeidheid", 
                   "sum_slaap", "sum_spanning", "alertness", "irritability", "skittish", 
-                  "rt_mean", "rt_sd","total_sleep_minutes", "T123_duration_awakening_24h")
+                  "rt_mean", "rt_sd","total_sleep_minutes", "T123_duration_awakening_24h",
+                  "IAF_open" ,"IAF_closed", "logpower_delta_open","logpower_alpha_open",       
+                  "logpower_beta_closed","logpower_beta_open","logpower_alpha_closed",
+                  "logpower_theta_closed", "logpower_theta_open","logpower_delta_closed")
 
 df_plot <- df_merged %>%
   filter(measurement %in% c("T0", "T1/2", "T3")) %>%
@@ -586,7 +770,21 @@ df_plot <- df_merged %>%
       TRUE ~ NA_character_
     )
   )
-varname <-     "total_sleep_minutes"  "T123_duration_awakening_24h"
+varname <- "total_sleep_minutes"
+varname <- "T123_duration_awakening_24h"
+
+varname <- "IAF_open"
+varname <- "IAF_closed"
+varname <-"logpower_delta_open"
+varname <-"logpower_delta_closed"
+varname <-"logpower_theta_open"
+varname <-"logpower_theta_closed"
+varname <-"logpower_alpha_open"
+varname <-"logpower_alpha_closed"
+varname <-"logpower_beta_open"
+varname <-"logpower_beta_closed"
+varname <- "rt_mean"
+
 
 for (varname in vars_to_plot) {
   # # Plot met facets per deelnemer
@@ -613,13 +811,13 @@ for (varname in vars_to_plot) {
     labs(
       title = "Color split: Slaapduur",
       x = "Meetmoment",
-      y = "Slaapduur (in min)",   #varname,
+      y = varname, #"Slaapduur (in min)",  
       color = "Slaap"
     ) +
     scale_color_manual(values = c("darkgreen", "darkorange", "lightgrey")) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  
+
   p_all_rank <- ggplot(df_plot, aes(x = measurement, y = .data[[varname]], group = Castor.ID, color = factor(rank_cat))) +
     geom_line(alpha = 0.7, color="black", linewidth=0.2) +
     geom_point(alpha = 0.7, size = 3) +
@@ -645,21 +843,43 @@ for (varname in vars_to_plot) {
 ggplot(df_plot, aes(x = measurement, y = Avg.Sleep.min, group = Castor.ID, color = factor(sleep_cat))) +
   geom_jitter()
 
-# ------------------------------------------------------------------------------------------------ #
-#                                   Assessment of associations
-# ------------------------------------------------------------------------------------------------ #
+
+
+# --------------------------------------------------------------------------- #
+# ----------------- Assessment of associations ------------------------------
+# --------------------------------------------------------------------------- #
 
 
 # Correlation
 # ----------------------------------- #
 
-df_corr <- df_final %>%
-  filter(measurement == "delta_T0_T1/2") %>%
-  select("Avg.Sleep.min", "sum_vermoeidheid", "alertness", "irritability", "skittish", "rt_mean")
+# df_corr <- df_final %>%
+#   filter(measurement == "delta_T0_T1/2") %>%
+#   select("Avg.Sleep.min", "sum_vermoeidheid", "alertness", "irritability", "skittish", 
+#          "rt_mean","logpower_theta_open","logpower_alpha_open")
+
+df_corr1 <- df_final %>%
+  select("HRV_diff","Avg.Sleep.min_diff","sum_slaap_diff","sum_spanning_diff","sum_vermoeidheid_diff",
+         "alertness_diff","irritability_diff","skittish_diff","total_sleep_minutes_diff", 
+         "rt_mean_diff","IAF_open_diff","logpower_theta_open_diff","logpower_alpha_open_diff")
 
 # Compute correlation matrix
-cor_matrix <- cor(df_corr, use = "pairwise.complete.obs")
-corrplot.mixed(cor_matrix,
+cor_matrix1 <- cor(df_corr1, use = "pairwise.complete.obs")
+corrplot.mixed(cor_matrix1,
+               upper = "ellipse",
+               lower = "number",
+               tl.cex = 0.5,
+               number.cex = 0.5,
+               tl.pos = "lt")
+
+df_corr2 <- df_final %>%
+  select("HRV_diff2","Avg.Sleep.min_diff2","sum_slaap_diff2","sum_spanning_diff2","sum_vermoeidheid_diff2",
+         "alertness_diff2","irritability_diff2","skittish_diff2","total_sleep_minutes_diff2", 
+         "rt_mean_diff2","IAF_open_diff2","logpower_theta_open_diff2","logpower_alpha_open_diff2")
+
+# Compute correlation matrix
+cor_matrix2 <- cor(df_corr2, use = "pairwise.complete.obs")
+corrplot.mixed(cor_matrix2,
                upper = "ellipse",
                lower = "number",
                tl.cex = 0.5,
@@ -731,47 +951,6 @@ result_hrv <- run_models("HRV.Last.Night.Avg...ms.", "delta_hrv", outcomes, df_f
 print(result_sleep_min)
 print(result_sleep_score)
 print(result_hrv)
-
-
-# Chatgpt
-# Welke resultaten zijn interessant/significant?
-#   🔹 Slaapduur (result_sleep_min)
-# alertness in delta_vs_T2T3:
-#   p = 0.030, estimate = 0.0950, R² = 0.335 → significant positief effect, dus meer slaap hangt samen met meer alertheid bij T2/T3.
-# 
-# Overige resultaten zijn niet significant (p > 0.05), hoewel het effect op irritability in delta_vs_delta een trend laat zien (p = 0.124).
-# 
-# 🔹 Slaapscore (result_sleep_score)
-# irritability in delta_vs_delta:
-#   p = 0.0540, estimate = 0.700, R² = 0.275 → bijna significant, mogelijk relevant effect.
-# 
-# Overige resultaten zijn niet significant, al zijn sommige trends zichtbaar (zoals alertness bij delta_vs_T2T3, p = 0.104).
-# 
-# 🔹 HRV (result_hrv)
-# irritability in delta_vs_delta:
-#   p = 0.0482, estimate = 0.700, R² = 0.310 → significant positief effect → toename in HRV hangt samen met minder irritatie.
-# 
-# Andere resultaten zijn niet significant (maar skittish en alertness laten wel zwakke trends zien).
-
-
-
-
-
-
-
-
-
-
-
-
-
-# andere manier
-df_selected <- df_final %>%
-  filter(measurement %in% c("T1", "T2/T3", "T4"))
-model <- lmer(irritability ~ Avg.Sleep.min * measurement + (1 | Castor.ID), data = df_selected)
-summary(model)
-
-
 
 
 
