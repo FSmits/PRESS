@@ -174,6 +174,7 @@ for subj_i = 1:length(subj_list)
 
             % -- Trim the data to time of experimental task --
             % find first and last event latency
+            EEG = eeg_checkset(EEG, 'eventconsistency');
             clear start_event; clear first_event; clear last_event;
             if task_i == 1
                 start_event = find(strcmp({EEG.event.type}, 'open'),1); %first eyes open condition in resting-state EEG
@@ -181,13 +182,16 @@ for subj_i = 1:length(subj_list)
                 start_event = find(strcmp({EEG.event.type}, 'habituation'),1); %first habituation probe in startle paradigm
             end
             first_event = EEG.event(start_event).latency;
-            last_event  = EEG.event(end).latency;
-            % convert to seconds
-            start_time = first_event / EEG.srate;
+            start_time  = first_event / EEG.srate; % convert to seconds
+            last_event = EEG.event(end).latency;
             end_time   = last_event / EEG.srate;
             % Define how much time of data to keep after last experimental event (absence of 'end' event)
             if task_i == 1
                 extra_time = 60; % resting-state EEG: maintain 60 seconds of data after last event
+                if EEG.event(end).type == "end"
+                    end_time   = EEG.event(end).latency / EEG.srate;
+                    extra_time = 0;
+                end
             else
                 extra_time = 5; % startle paradigm: maintain 5 seconds of data after last event
             end
@@ -287,8 +291,6 @@ for subj_i = 1:length(subj_list)
             % Make sure events are sorted after inserting
             EEG = eeg_checkset(EEG, 'eventconsistency');
 
-            % % % % Epoch the data
-            % % % EEG  = pop_epoch( EEG, {'open' 'close'},  [0  2], 'epochinfo', 'yes'); %epoch 0-2 seconds around event
 
             % -- Save processed EEG set --
             fprintf('\n****\nSaving processed subject %i session %s %s\n****\n\n', subj_list(subj_i), sessions{sess_i}, tasks{task_i});
